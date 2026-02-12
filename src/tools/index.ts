@@ -21,7 +21,7 @@ import {
   updateDraft,
   starEmail,
   unstarEmail,
-  listStarredEmails,
+  listAllStarredEmails,
   findDraftsFolder,
   resolveEmailId,
   resolveInMailbox,
@@ -551,16 +551,16 @@ const registry: ToolRegistration[] = [
   {
     name: "list_starred_emails",
     description:
-      "List all starred (flagged) emails in a mailbox. " +
+      "List all starred (flagged) emails across all folders, grouped by folder. " +
       LIST_DESCRIPTION_SUFFIX,
     inputSchema: {
       type: "object",
-      properties: { ...MAILBOX_SCHEMA },
+      properties: {},
     },
-    handler: async (imapClient, args) => {
-      const mailbox = (args.mailbox as string) || "INBOX";
-      const emails = await listStarredEmails(imapClient, mailbox);
-      return jsonResult({ count: emails.length, emails });
+    handler: async (imapClient) => {
+      const groups = await listAllStarredEmails(imapClient);
+      const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
+      return jsonResult({ totalCount, folders: groups });
     },
   },
 

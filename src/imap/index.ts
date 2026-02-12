@@ -9,7 +9,8 @@ export {
   extractEmailAddress,
 } from "./search.js";
 export { listFolders, createFolder, moveEmail } from "./folders.js";
-export { starEmail, unstarEmail, listStarredEmails } from "./flags.js";
+export { starEmail, unstarEmail, listStarredEmails, listAllStarredEmails } from "./flags.js";
+export type { StarredFolderGroup } from "./flags.js";
 export {
   findDraftsFolder,
   createDraft,

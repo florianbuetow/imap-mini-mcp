@@ -2,6 +2,13 @@ import type { ImapClient } from "./client.js";
 import type { EmailEntry } from "./types.js";
 import { extractEmailAddress } from "./search.js";
 import { buildCompositeId } from "./resolve.js";
+import { listFolders } from "./folders.js";
+
+export interface StarredFolderGroup {
+  folder: string;
+  count: number;
+  emails: EmailEntry[];
+}
 
 /**
  * Add the \Flagged (starred) flag to an email.
@@ -82,4 +89,26 @@ export async function listStarredEmails(
   } finally {
     lock.release();
   }
+}
+
+/**
+ * List starred emails across all folders, grouped by folder.
+ * Folders with no starred emails are omitted. Groups sorted by folder path,
+ * emails sorted newest-first within each group.
+ */
+export async function listAllStarredEmails(
+  imapClient: ImapClient
+): Promise<StarredFolderGroup[]> {
+  const folders = await listFolders(imapClient);
+  const groups: StarredFolderGroup[] = [];
+
+  for (const folder of folders) {
+    const emails = await listStarredEmails(imapClient, folder.path);
+    if (emails.length > 0) {
+      groups.push({ folder: folder.path, count: emails.length, emails });
+    }
+  }
+
+  groups.sort((a, b) => a.folder.localeCompare(b.folder));
+  return groups;
 }

@@ -1,6 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
-import { starEmail, unstarEmail, listStarredEmails } from "./flags.js";
+import { starEmail, unstarEmail, listStarredEmails, listAllStarredEmails } from "./flags.js";
 import type { ImapClient } from "./client.js";
+
+vi.mock("./folders.js", () => ({
+  listFolders: vi.fn().mockResolvedValue([]),
+}));
+
+import { listFolders } from "./folders.js";
+const mockListFolders = vi.mocked(listFolders);
 
 function createMockImapClient() {
   const mockClient = {
@@ -132,5 +139,114 @@ describe("listStarredEmails", () => {
 
     await expect(listStarredEmails(imapClient)).rejects.toThrow("fail");
     expect(releaseFn).toHaveBeenCalled();
+  });
+});
+
+describe("listAllStarredEmails", () => {
+  function makeFetchIterator(messages: any[]) {
+    return {
+      async *[Symbol.asyncIterator]() {
+        for (const m of messages) yield m;
+      },
+    };
+  }
+
+  it("returns starred emails grouped by folder, sorted by folder path", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    mockListFolders.mockResolvedValue([
+      { path: "Sent", name: "Sent", delimiter: "/" },
+      { path: "INBOX", name: "INBOX", delimiter: "/" },
+    ]);
+
+    // Track which mailbox is opened to return different results per folder
+    let currentMailbox = "";
+    (imapClient.openMailbox as ReturnType<typeof vi.fn>).mockImplementation(
+      async (mb: string) => {
+        currentMailbox = mb;
+        return { release: vi.fn() };
+      }
+    );
+
+    mockClient.search.mockImplementation(async () => {
+      if (currentMailbox === "INBOX") return [10];
+      if (currentMailbox === "Sent") return [20, 30];
+      return [];
+    });
+
+    mockClient.fetch.mockImplementation(() => {
+      if (currentMailbox === "INBOX") {
+        return makeFetchIterator([
+          {
+            uid: 10,
+            envelope: {
+              subject: "Inbox starred",
+              from: [{ address: "a@test.com" }],
+              date: new Date("2026-01-15"),
+              messageId: "<msg-10@test.com>",
+            },
+          },
+        ]);
+      }
+      // Sent folder
+      return makeFetchIterator([
+        {
+          uid: 20,
+          envelope: {
+            subject: "Sent older",
+            from: [{ address: "b@test.com" }],
+            date: new Date("2026-01-01"),
+            messageId: "<msg-20@test.com>",
+          },
+        },
+        {
+          uid: 30,
+          envelope: {
+            subject: "Sent newer",
+            from: [{ address: "c@test.com" }],
+            date: new Date("2026-02-01"),
+            messageId: "<msg-30@test.com>",
+          },
+        },
+      ]);
+    });
+
+    const result = await listAllStarredEmails(imapClient);
+
+    expect(result).toHaveLength(2);
+    // Sorted by folder path: INBOX < Sent
+    expect(result[0].folder).toBe("INBOX");
+    expect(result[0].count).toBe(1);
+    expect(result[0].emails).toHaveLength(1);
+    expect(result[1].folder).toBe("Sent");
+    expect(result[1].count).toBe(2);
+    // Newest first within group
+    expect(result[1].emails[0].subject).toBe("Sent newer");
+    expect(result[1].emails[1].subject).toBe("Sent older");
+  });
+
+  it("skips folders with no starred emails", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    mockListFolders.mockResolvedValue([
+      { path: "INBOX", name: "INBOX", delimiter: "/" },
+      { path: "Trash", name: "Trash", delimiter: "/" },
+    ]);
+
+    mockClient.search.mockResolvedValue([]);
+
+    const result = await listAllStarredEmails(imapClient);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns empty array when no folders exist", async () => {
+    const { imapClient } = createMockImapClient();
+
+    mockListFolders.mockResolvedValue([]);
+
+    const result = await listAllStarredEmails(imapClient);
+
+    expect(result).toEqual([]);
   });
 });
