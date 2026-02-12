@@ -1,0 +1,1 @@
+// Consolidated into index.ts
