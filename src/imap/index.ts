@@ -7,6 +7,11 @@ export {
   extractEmailAddress,
 } from "./search.js";
 export { listFolders, createFolder, moveEmail } from "./folders.js";
+export {
+  findDraftsFolder,
+  createDraft,
+  updateDraft,
+} from "./drafts.js";
 export type { ImapConfig, EmailEntry } from "./types.js";
 export type {
   EmailContent,
@@ -14,3 +19,4 @@ export type {
   AttachmentData,
 } from "./search.js";
 export type { FolderEntry } from "./folders.js";
+export type { DraftOptions, DraftResult } from "./drafts.js";

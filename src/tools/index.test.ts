@@ -18,6 +18,8 @@ vi.mock("../imap/index.js", async () => {
     listFolders: vi.fn(),
     createFolder: vi.fn(),
     moveEmail: vi.fn(),
+    createDraft: vi.fn(),
+    updateDraft: vi.fn(),
   };
 });
 
@@ -28,6 +30,8 @@ import {
   listFolders,
   createFolder,
   moveEmail,
+  createDraft,
+  updateDraft,
 } from "../imap/index.js";
 
 const mockListEmails = vi.mocked(listEmails);
@@ -36,6 +40,8 @@ const mockFetchAttachment = vi.mocked(fetchEmailAttachment);
 const mockListFolders = vi.mocked(listFolders);
 const mockCreateFolder = vi.mocked(createFolder);
 const mockMoveEmail = vi.mocked(moveEmail);
+const mockCreateDraft = vi.mocked(createDraft);
+const mockUpdateDraft = vi.mocked(updateDraft);
 const mockImapClient = {} as ImapClient;
 
 // ---------------------------------------------------------------------------
@@ -43,13 +49,14 @@ const mockImapClient = {} as ImapClient;
 // ---------------------------------------------------------------------------
 
 describe("tool definitions", () => {
-  it("exposes exactly 10 tools", () => {
-    expect(tools).toHaveLength(10);
+  it("exposes exactly 14 tools", () => {
+    expect(tools).toHaveLength(14);
   });
 
   it("has the expected tool names", () => {
     const names = tools.map((t) => t.name);
     expect(names).toEqual([
+      "list_emails_24h",
       "list_emails_7days",
       "list_emails_month",
       "list_emails_quarter",
@@ -60,6 +67,9 @@ describe("tool definitions", () => {
       "list_folders",
       "create_folder",
       "move_email",
+      "create_draft",
+      "draft_reply",
+      "update_draft",
     ]);
   });
 
@@ -367,6 +377,291 @@ describe("handleToolCall — move_email", () => {
       "Sent",
       "Archive"
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — create_draft
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — create_draft", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("IMAP_USER", "me@test.com");
+  });
+
+  it("returns error when required fields are missing", async () => {
+    const result = await handleToolCall(mockImapClient, "create_draft", {
+      to: "recipient@test.com",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("required");
+  });
+
+  it("calls createDraft with correct arguments", async () => {
+    mockCreateDraft.mockResolvedValue({
+      uid: 500,
+      subject: "Test",
+      to: "recipient@test.com",
+      date: "2026-02-11T00:00:00.000Z",
+    });
+
+    const result = await handleToolCall(mockImapClient, "create_draft", {
+      to: "recipient@test.com",
+      subject: "Test",
+      body: "Hello",
+      cc: "cc@test.com",
+    });
+
+    expect(mockCreateDraft).toHaveBeenCalledWith(mockImapClient, "me@test.com", {
+      to: "recipient@test.com",
+      subject: "Test",
+      body: "Hello",
+      cc: "cc@test.com",
+      bcc: undefined,
+      inReplyTo: undefined,
+    });
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.uid).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — draft_reply
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — draft_reply", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("IMAP_USER", "me@test.com");
+  });
+
+  it("returns error when uid or body is missing", async () => {
+    const result = await handleToolCall(mockImapClient, "draft_reply", {
+      uid: 100,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("required");
+  });
+
+  it("returns error when original email not found", async () => {
+    mockFetchContent.mockResolvedValue(null);
+    const result = await handleToolCall(mockImapClient, "draft_reply", {
+      uid: 999,
+      body: "Reply text",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not found");
+  });
+
+  it("derives to and subject from original email", async () => {
+    mockFetchContent.mockResolvedValue({
+      uid: 100,
+      subject: "Original Subject",
+      from: "sender@test.com",
+      to: "me@test.com",
+      date: "2026-02-10T00:00:00.000Z",
+      body: "Original body",
+      attachments: [],
+    });
+    mockCreateDraft.mockResolvedValue({
+      uid: 501,
+      subject: "Re: Original Subject",
+      to: "sender@test.com",
+      date: "2026-02-11T00:00:00.000Z",
+    });
+
+    await handleToolCall(mockImapClient, "draft_reply", {
+      uid: 100,
+      body: "My reply",
+    });
+
+    expect(mockCreateDraft).toHaveBeenCalledWith(
+      mockImapClient,
+      "me@test.com",
+      expect.objectContaining({
+        to: "sender@test.com",
+        subject: "Re: Original Subject",
+        body: "My reply",
+        inReplyTo: 100,
+      })
+    );
+  });
+
+  it("does not double-prefix Re: on subject", async () => {
+    mockFetchContent.mockResolvedValue({
+      uid: 100,
+      subject: "Re: Already Replied",
+      from: "sender@test.com",
+      to: "me@test.com",
+      date: "2026-02-10T00:00:00.000Z",
+      body: "Body",
+      attachments: [],
+    });
+    mockCreateDraft.mockResolvedValue({
+      uid: 502,
+      subject: "Re: Already Replied",
+      to: "sender@test.com",
+      date: "2026-02-11T00:00:00.000Z",
+    });
+
+    await handleToolCall(mockImapClient, "draft_reply", {
+      uid: 100,
+      body: "Reply",
+    });
+
+    expect(mockCreateDraft).toHaveBeenCalledWith(
+      mockImapClient,
+      "me@test.com",
+      expect.objectContaining({
+        subject: "Re: Already Replied",
+      })
+    );
+  });
+
+  it("includes original recipients as CC when reply_all is true", async () => {
+    mockFetchContent.mockResolvedValue({
+      uid: 100,
+      subject: "Group Thread",
+      from: "sender@test.com",
+      to: "me@test.com, other@test.com",
+      date: "2026-02-10T00:00:00.000Z",
+      body: "Body",
+      attachments: [],
+    });
+    mockCreateDraft.mockResolvedValue({
+      uid: 503,
+      subject: "Re: Group Thread",
+      to: "sender@test.com",
+      date: "2026-02-11T00:00:00.000Z",
+    });
+
+    await handleToolCall(mockImapClient, "draft_reply", {
+      uid: 100,
+      body: "Reply to all",
+      reply_all: true,
+    });
+
+    expect(mockCreateDraft).toHaveBeenCalledWith(
+      mockImapClient,
+      "me@test.com",
+      expect.objectContaining({
+        cc: "other@test.com",
+      })
+    );
+  });
+
+  it("excludes current user from CC in reply_all", async () => {
+    mockFetchContent.mockResolvedValue({
+      uid: 100,
+      subject: "Thread",
+      from: "sender@test.com",
+      to: "me@test.com",
+      date: "2026-02-10T00:00:00.000Z",
+      body: "Body",
+      attachments: [],
+    });
+    mockCreateDraft.mockResolvedValue({
+      uid: 504,
+      subject: "Re: Thread",
+      to: "sender@test.com",
+      date: "2026-02-11T00:00:00.000Z",
+    });
+
+    await handleToolCall(mockImapClient, "draft_reply", {
+      uid: 100,
+      body: "Reply",
+      reply_all: true,
+    });
+
+    // CC should be undefined since the only recipient was the current user
+    expect(mockCreateDraft).toHaveBeenCalledWith(
+      mockImapClient,
+      "me@test.com",
+      expect.objectContaining({
+        cc: undefined,
+      })
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — update_draft
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — update_draft", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("IMAP_USER", "me@test.com");
+  });
+
+  it("returns error when required fields are missing", async () => {
+    const result = await handleToolCall(mockImapClient, "update_draft", {
+      uid: 400,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("required");
+  });
+
+  it("calls updateDraft with correct arguments", async () => {
+    mockUpdateDraft.mockResolvedValue({
+      uid: 501,
+      subject: "Updated",
+      to: "recipient@test.com",
+      date: "2026-02-11T00:00:00.000Z",
+    });
+
+    const result = await handleToolCall(mockImapClient, "update_draft", {
+      uid: 400,
+      to: "recipient@test.com",
+      subject: "Updated",
+      body: "New content",
+    });
+
+    expect(mockUpdateDraft).toHaveBeenCalledWith(
+      mockImapClient,
+      "me@test.com",
+      400,
+      {
+        to: "recipient@test.com",
+        subject: "Updated",
+        body: "New content",
+        cc: undefined,
+        bcc: undefined,
+        inReplyTo: undefined,
+      }
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.uid).toBe(501);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool metadata — draft tools
+// ---------------------------------------------------------------------------
+
+describe("tool definitions — draft tools", () => {
+  it("create_draft requires to, subject, and body", () => {
+    const tool = tools.find((t) => t.name === "create_draft")!;
+    expect(tool.inputSchema.required).toContain("to");
+    expect(tool.inputSchema.required).toContain("subject");
+    expect(tool.inputSchema.required).toContain("body");
+  });
+
+  it("draft_reply requires uid and body", () => {
+    const tool = tools.find((t) => t.name === "draft_reply")!;
+    expect(tool.inputSchema.required).toContain("uid");
+    expect(tool.inputSchema.required).toContain("body");
+  });
+
+  it("update_draft requires uid, to, subject, and body", () => {
+    const tool = tools.find((t) => t.name === "update_draft")!;
+    expect(tool.inputSchema.required).toContain("uid");
+    expect(tool.inputSchema.required).toContain("to");
+    expect(tool.inputSchema.required).toContain("subject");
+    expect(tool.inputSchema.required).toContain("body");
   });
 });
 
