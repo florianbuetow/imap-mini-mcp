@@ -17,7 +17,7 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "imap": {
+    "imap-mini-mcp": {
       "command": "node",
       "args": ["/path/to/imap-mini-mcp/dist/index.js"],
       "env": {
