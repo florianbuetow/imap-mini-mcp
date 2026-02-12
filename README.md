@@ -4,6 +4,54 @@ A lightweight MCP (Model Context Protocol) server for reading IMAP email and cre
 
 All tools are read-only, except for draft creation — agents can compose and update drafts but cannot send or delete emails.
 
+## How to Use
+
+### Agent configuration
+
+Add to your MCP client config (e.g. `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "imap": {
+      "command": "node",
+      "args": ["/path/to/imap-mini-mcp/dist/index.js"],
+      "env": {
+        "IMAP_HOST": "imap.example.com",
+        "IMAP_USER": "you@example.com",
+        "IMAP_PASS": "your-password"
+      }
+    }
+  }
+}
+```
+
+The `args` path must point to the built `dist/index.js`. Add any optional variables to the `env` block as needed.
+
+### Environment variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `IMAP_HOST` | yes | — | IMAP server hostname (e.g. `imap.gmail.com`) |
+| `IMAP_USER` | yes | — | Email address or username |
+| `IMAP_PASS` | yes | — | Password or app-specific password |
+| `IMAP_PORT` | no | `993` | IMAP server port |
+| `IMAP_SECURE` | no | `true` | Use TLS for the connection |
+| `IMAP_STARTTLS` | no | `true` | Upgrade to TLS via STARTTLS (when `IMAP_SECURE=false`) |
+| `IMAP_TLS_REJECT_UNAUTHORIZED` | no | `true` | Reject self-signed TLS certificates |
+
+For most providers (Gmail, Outlook, Fastmail), the defaults work — just set host, user, and password.
+
+For **ProtonMail Bridge** (localhost, self-signed cert, no TLS):
+
+```
+IMAP_HOST=127.0.0.1
+IMAP_PORT=1143
+IMAP_SECURE=false
+IMAP_STARTTLS=false
+IMAP_TLS_REJECT_UNAUTHORIZED=false
+```
+
 ## Tools
 
 ### Listing emails
@@ -137,54 +185,6 @@ Replace an existing draft with new content. The UID must refer to an email in th
 | `in_reply_to` | number | no | UID of email being replied to (for threading) |
 
 Returns `{uid, subject, to, date}` with the new draft's UID.
-
-## Configuration
-
-### Environment variables
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `IMAP_HOST` | yes | — | IMAP server hostname (e.g. `imap.gmail.com`) |
-| `IMAP_USER` | yes | — | Email address or username |
-| `IMAP_PASS` | yes | — | Password or app-specific password |
-| `IMAP_PORT` | no | `993` | IMAP server port |
-| `IMAP_SECURE` | no | `true` | Use TLS for the connection |
-| `IMAP_STARTTLS` | no | `true` | Upgrade to TLS via STARTTLS (when `IMAP_SECURE=false`) |
-| `IMAP_TLS_REJECT_UNAUTHORIZED` | no | `true` | Reject self-signed TLS certificates |
-
-For most providers (Gmail, Outlook, Fastmail), the defaults work — just set host, user, and password.
-
-For **ProtonMail Bridge** (localhost, self-signed cert, no TLS):
-
-```
-IMAP_HOST=127.0.0.1
-IMAP_PORT=1143
-IMAP_SECURE=false
-IMAP_STARTTLS=false
-IMAP_TLS_REJECT_UNAUTHORIZED=false
-```
-
-### Agent configuration
-
-Add to your MCP client config (e.g. `claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "imap": {
-      "command": "node",
-      "args": ["/path/to/imap-mini-mcp/dist/index.js"],
-      "env": {
-        "IMAP_HOST": "imap.example.com",
-        "IMAP_USER": "you@example.com",
-        "IMAP_PASS": "your-password"
-      }
-    }
-  }
-}
-```
-
-The `args` path must point to the built `dist/index.js`. Add any optional variables to the `env` block as needed.
 
 ## Development
 
