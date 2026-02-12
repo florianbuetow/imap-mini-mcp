@@ -27,10 +27,13 @@ export class ImapClient {
       secure: this.config.secure,
       auth: this.config.auth,
       logger: false,
+      // When secure is false, skip STARTTLS — the connection is already
+      // trusted (e.g. ProtonMail Bridge on localhost).
+      ...(this.config.secure ? {} : { doSTARTTLS: false }),
       tls: {
         rejectUnauthorized: false,
       },
-    });
+    } as any);
 
     await this.client.connect();
     return this.client;
