@@ -12,7 +12,7 @@ import { tools, handleToolCall } from "./tools/index.js";
 export function createServer(imapClient: ImapClient): Server {
   const server = new Server(
     {
-      name: "imap-mcp",
+      name: "imap-mini-mcp",
       version: "0.1.0",
     },
     {

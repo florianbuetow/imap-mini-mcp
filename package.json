@@ -1,11 +1,11 @@
 {
-  "name": "imap-mcp",
+  "name": "imap-mini-mcp",
   "version": "0.1.0",
-  "description": "MCP server for searching and browsing IMAP email",
+  "description": "A lightweight MCP server for reading IMAP email and creating draft replies. Built for ProtonMail Bridge.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "imap-mcp": "dist/index.js"
+    "imap-mini-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -19,7 +19,9 @@
     "mcp",
     "imap",
     "email",
-    "search"
+    "search",
+    "protonmail",
+    "protonmail-bridge"
   ],
   "license": "MIT",
   "dependencies": {

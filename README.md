@@ -1,6 +1,8 @@
-# imap-mcp
+# IMAP Mini MCP
 
-An MCP (Model Context Protocol) server that gives AI agents the ability to read, organize, and manage email over IMAP. Agents can browse mailboxes, read emails, download attachments, and move messages between folders — without being able to delete anything.
+A lightweight MCP (Model Context Protocol) server for reading IMAP email and creating draft replies. Built specifically to interface with [ProtonMail Bridge](https://proton.me/mail/bridge), since ProtonMail doesn't provide direct IMAP access and requires the use of their bridge application.
+
+All tools are read-only, except for draft creation — agents can compose and update drafts but cannot send or delete emails.
 
 ## Tools
 
@@ -16,6 +18,28 @@ All list tools return `{count, emails}` where each email is `{uid, subject, from
 | `list_emails_quarter` | Last 90 days |
 | `list_emails_year` | Last 365 days |
 | `list_emails_all` | All time |
+
+### `list_emails_from_domain`
+
+List all emails from a specific domain.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `domain` | string | yes | Domain to search for (e.g. `"example.com"`) |
+| `mailbox` | string | no | Default: `"INBOX"` |
+
+Returns `{count, emails}`.
+
+### `list_emails_from_sender`
+
+List all emails from a specific sender email address.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `sender` | string | yes | Sender email address (e.g. `"alice@example.com"`) |
+| `mailbox` | string | no | Default: `"INBOX"` |
+
+Returns `{count, emails}`.
 
 ### `fetch_email_content`
 
@@ -121,7 +145,7 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
   "mcpServers": {
     "imap": {
       "command": "node",
-      "args": ["/path/to/imap-mcp/dist/index.js"],
+      "args": ["/path/to/imap-mini-mcp/dist/index.js"],
       "env": {
         "IMAP_HOST": "imap.example.com",
         "IMAP_PORT": "993",
