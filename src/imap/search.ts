@@ -83,6 +83,100 @@ export async function listEmails(
   }
 }
 
+/**
+ * List emails from a specific domain (e.g. "you.com" matches all senders @you.com).
+ * Uses IMAP SEARCH FROM which does substring matching on the From header.
+ */
+export async function listEmailsFromDomain(
+  imapClient: ImapClient,
+  domain: string,
+  mailbox: string = "INBOX"
+): Promise<EmailEntry[]> {
+  const lock = await imapClient.openMailbox(mailbox);
+  try {
+    const client = imapClient.getClient();
+
+    const query: SearchObject = { from: `@${domain}` };
+    const uids = await client.search(query, { uid: true });
+
+    if (!uids || uids.length === 0) {
+      return [];
+    }
+
+    const sortedUids = uids.sort((a, b) => b - a);
+
+    const results: EmailEntry[] = [];
+    for await (const msg of client.fetch(sortedUids.join(","), {
+      uid: true,
+      envelope: true,
+    }, { uid: true })) {
+      results.push({
+        uid: msg.uid,
+        subject: msg.envelope?.subject || "(no subject)",
+        from: extractEmailAddress(msg.envelope?.from),
+        date: msg.envelope?.date?.toISOString() || "",
+      });
+    }
+
+    results.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return db - da;
+    });
+
+    return results;
+  } finally {
+    lock.release();
+  }
+}
+
+/**
+ * List emails from a specific sender email address (e.g. "alice@you.com").
+ * Uses IMAP SEARCH FROM which does substring matching on the From header.
+ */
+export async function listEmailsFromSender(
+  imapClient: ImapClient,
+  sender: string,
+  mailbox: string = "INBOX"
+): Promise<EmailEntry[]> {
+  const lock = await imapClient.openMailbox(mailbox);
+  try {
+    const client = imapClient.getClient();
+
+    const query: SearchObject = { from: sender };
+    const uids = await client.search(query, { uid: true });
+
+    if (!uids || uids.length === 0) {
+      return [];
+    }
+
+    const sortedUids = uids.sort((a, b) => b - a);
+
+    const results: EmailEntry[] = [];
+    for await (const msg of client.fetch(sortedUids.join(","), {
+      uid: true,
+      envelope: true,
+    }, { uid: true })) {
+      results.push({
+        uid: msg.uid,
+        subject: msg.envelope?.subject || "(no subject)",
+        from: extractEmailAddress(msg.envelope?.from),
+        date: msg.envelope?.date?.toISOString() || "",
+      });
+    }
+
+    results.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return db - da;
+    });
+
+    return results;
+  } finally {
+    lock.release();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Email content + attachment metadata
 // ---------------------------------------------------------------------------

@@ -1,6 +1,8 @@
 export { ImapClient, createClientFromEnv } from "./client.js";
 export {
   listEmails,
+  listEmailsFromDomain,
+  listEmailsFromSender,
   fetchEmailContent,
   fetchEmailAttachment,
   daysAgo,

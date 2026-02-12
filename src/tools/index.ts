@@ -9,6 +9,8 @@
 import type { ImapClient } from "../imap/index.js";
 import {
   listEmails,
+  listEmailsFromDomain,
+  listEmailsFromSender,
   fetchEmailContent,
   fetchEmailAttachment,
   daysAgo,
@@ -109,6 +111,62 @@ const registry: ToolRegistration[] = [
   createListTool("list_emails_quarter", 90, "last 90 days"),
   createListTool("list_emails_year", 365, "last 365 days"),
   createListTool("list_emails_all", undefined, ""),
+
+  {
+    name: "list_emails_from_domain",
+    description:
+      "List all emails from a specific domain (e.g. \"you.com\" finds all emails from @you.com senders). " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          description:
+            'The domain to search for (e.g. "example.com"). Do not include the @ sign.',
+        },
+        ...MAILBOX_SCHEMA,
+      },
+      required: ["domain"],
+    },
+    handler: async (imapClient, args) => {
+      const domain = args.domain as string;
+      const mailbox = (args.mailbox as string) || "INBOX";
+
+      if (!domain) return errorResult("Error: domain is required.");
+
+      const emails = await listEmailsFromDomain(imapClient, domain, mailbox);
+      return jsonResult({ count: emails.length, emails });
+    },
+  },
+
+  {
+    name: "list_emails_from_sender",
+    description:
+      "List all emails from a specific sender email address (e.g. \"alice@example.com\"). " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: {
+        sender: {
+          type: "string",
+          description:
+            'The sender email address to search for (e.g. "alice@example.com").',
+        },
+        ...MAILBOX_SCHEMA,
+      },
+      required: ["sender"],
+    },
+    handler: async (imapClient, args) => {
+      const sender = args.sender as string;
+      const mailbox = (args.mailbox as string) || "INBOX";
+
+      if (!sender) return errorResult("Error: sender is required.");
+
+      const emails = await listEmailsFromSender(imapClient, sender, mailbox);
+      return jsonResult({ count: emails.length, emails });
+    },
+  },
 
   {
     name: "fetch_email_content",

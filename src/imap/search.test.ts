@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { daysAgo, extractEmailAddress, listEmails, fetchEmailContent, fetchEmailAttachment } from "./search.js";
+import { daysAgo, extractEmailAddress, listEmails, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment } from "./search.js";
 import type { ImapClient } from "./client.js";
 
 // ---------------------------------------------------------------------------
@@ -225,6 +225,93 @@ describe("listEmails", () => {
     expect(result[0].subject).toBe("(no subject)");
     expect(result[0].from).toBe("");
     expect(result[0].date).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listEmailsFromDomain
+// ---------------------------------------------------------------------------
+
+describe("listEmailsFromDomain", () => {
+  it("searches with @domain in the from field", async () => {
+    const { imapClient, mockClient } = createMockImapClient({ search: [] });
+    await listEmailsFromDomain(imapClient, "you.com");
+
+    expect(mockClient.search).toHaveBeenCalledWith(
+      { from: "@you.com" },
+      { uid: true }
+    );
+  });
+
+  it("returns matching emails sorted by date descending", async () => {
+    const { imapClient } = createMockImapClient({
+      search: [10, 20],
+      fetchMessages: [
+        {
+          uid: 10,
+          envelope: {
+            subject: "Old",
+            from: [{ address: "alice@you.com" }],
+            date: new Date("2026-01-01"),
+          },
+        },
+        {
+          uid: 20,
+          envelope: {
+            subject: "New",
+            from: [{ address: "bob@you.com" }],
+            date: new Date("2026-02-01"),
+          },
+        },
+      ],
+    });
+
+    const result = await listEmailsFromDomain(imapClient, "you.com");
+    expect(result).toHaveLength(2);
+    expect(result[0].uid).toBe(20);
+    expect(result[1].uid).toBe(10);
+  });
+
+  it("returns empty array when no matches", async () => {
+    const { imapClient } = createMockImapClient({ search: [] });
+    const result = await listEmailsFromDomain(imapClient, "nobody.com");
+    expect(result).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listEmailsFromSender
+// ---------------------------------------------------------------------------
+
+describe("listEmailsFromSender", () => {
+  it("searches with exact sender in the from field", async () => {
+    const { imapClient, mockClient } = createMockImapClient({ search: [] });
+    await listEmailsFromSender(imapClient, "alice@example.com");
+
+    expect(mockClient.search).toHaveBeenCalledWith(
+      { from: "alice@example.com" },
+      { uid: true }
+    );
+  });
+
+  it("returns matching emails", async () => {
+    const { imapClient } = createMockImapClient({
+      search: [5],
+      fetchMessages: [
+        {
+          uid: 5,
+          envelope: {
+            subject: "Hello",
+            from: [{ address: "alice@example.com" }],
+            date: new Date("2026-02-10"),
+          },
+        },
+      ],
+    });
+
+    const result = await listEmailsFromSender(imapClient, "alice@example.com");
+    expect(result).toHaveLength(1);
+    expect(result[0].from).toBe("alice@example.com");
   });
 });
 
