@@ -140,6 +140,7 @@ describe("listEmails", () => {
             subject: "Old email",
             from: [{ address: "old@test.com" }],
             date: new Date("2026-01-01"),
+            messageId: "<msg-100@example.com>",
           },
         },
         {
@@ -148,6 +149,7 @@ describe("listEmails", () => {
             subject: "Middle email",
             from: [{ address: "mid@test.com" }],
             date: new Date("2026-01-15"),
+            messageId: "<msg-200@example.com>",
           },
         },
         {
@@ -156,6 +158,7 @@ describe("listEmails", () => {
             subject: "New email",
             from: [{ address: "new@test.com" }],
             date: new Date("2026-02-01"),
+            messageId: "<msg-300@example.com>",
           },
         },
       ],
@@ -165,11 +168,11 @@ describe("listEmails", () => {
 
     expect(result).toHaveLength(3);
     // Newest first
-    expect(result[0].uid).toBe(300);
+    expect(result[0].id).toBe("2026-02-01T00:00:00.<msg-300@example.com>");
     expect(result[0].subject).toBe("New email");
     expect(result[0].from).toBe("new@test.com");
-    expect(result[1].uid).toBe(200);
-    expect(result[2].uid).toBe(100);
+    expect(result[1].id).toBe("2026-01-15T00:00:00.<msg-200@example.com>");
+    expect(result[2].id).toBe("2026-01-01T00:00:00.<msg-100@example.com>");
   });
 
   it("passes since date to IMAP search query", async () => {
@@ -215,6 +218,7 @@ describe("listEmails", () => {
             subject: null,
             from: null,
             date: null,
+            messageId: null,
           },
         },
       ],
@@ -253,6 +257,7 @@ describe("listEmailsFromDomain", () => {
             subject: "Old",
             from: [{ address: "alice@you.com" }],
             date: new Date("2026-01-01"),
+            messageId: "<msg-10@you.com>",
           },
         },
         {
@@ -261,6 +266,7 @@ describe("listEmailsFromDomain", () => {
             subject: "New",
             from: [{ address: "bob@you.com" }],
             date: new Date("2026-02-01"),
+            messageId: "<msg-20@you.com>",
           },
         },
       ],
@@ -268,8 +274,8 @@ describe("listEmailsFromDomain", () => {
 
     const result = await listEmailsFromDomain(imapClient, "you.com");
     expect(result).toHaveLength(2);
-    expect(result[0].uid).toBe(20);
-    expect(result[1].uid).toBe(10);
+    expect(result[0].id).toBe("2026-02-01T00:00:00.<msg-20@you.com>");
+    expect(result[1].id).toBe("2026-01-01T00:00:00.<msg-10@you.com>");
   });
 
   it("returns empty array when no matches", async () => {
@@ -304,6 +310,7 @@ describe("listEmailsFromSender", () => {
             subject: "Hello",
             from: [{ address: "alice@example.com" }],
             date: new Date("2026-02-10"),
+            messageId: "<msg-5@example.com>",
           },
         },
       ],
@@ -335,6 +342,7 @@ describe("fetchEmailContent", () => {
           from: [{ address: "test@test.com" }],
           to: [{ address: "me@test.com" }],
           date: new Date("2026-02-10"),
+          messageId: "<msg-42@test.com>",
         },
         source: null,
       },
@@ -342,7 +350,7 @@ describe("fetchEmailContent", () => {
 
     const result = await fetchEmailContent(imapClient, 42);
     expect(result).not.toBeNull();
-    expect(result!.uid).toBe(42);
+    expect(result!.id).toBe("2026-02-10T00:00:00.<msg-42@test.com>");
     expect(result!.body).toBe("(no body)");
     expect(result!.attachments).toEqual([]);
   });
@@ -354,6 +362,7 @@ describe("fetchEmailContent", () => {
         "To: receiver@example.com",
         "Subject: Hello World",
         "Date: Tue, 10 Feb 2026 12:00:00 +0000",
+        "Message-ID: <hello-world@example.com>",
         "Content-Type: text/plain; charset=utf-8",
         "",
         "This is the body of the email.",
@@ -368,6 +377,7 @@ describe("fetchEmailContent", () => {
           from: [{ address: "sender@example.com" }],
           to: [{ address: "receiver@example.com" }],
           date: new Date("2026-02-10T12:00:00Z"),
+          messageId: "<hello-world@example.com>",
         },
         source: rawEmail,
       },
@@ -375,7 +385,7 @@ describe("fetchEmailContent", () => {
 
     const result = await fetchEmailContent(imapClient, 101);
     expect(result).not.toBeNull();
-    expect(result!.uid).toBe(101);
+    expect(result!.id).toContain("<hello-world@example.com>");
     expect(result!.subject).toBe("Hello World");
     expect(result!.body).toContain("This is the body of the email.");
     expect(result!.attachments).toEqual([]);
@@ -389,6 +399,7 @@ describe("fetchEmailContent", () => {
         "To: receiver@example.com",
         "Subject: With Attachment",
         "Date: Tue, 10 Feb 2026 12:00:00 +0000",
+        "Message-ID: <att-email@example.com>",
         `Content-Type: multipart/mixed; boundary="${boundary}"`,
         "",
         `--${boundary}`,
@@ -413,6 +424,7 @@ describe("fetchEmailContent", () => {
           from: [{ address: "sender@example.com" }],
           to: [{ address: "receiver@example.com" }],
           date: new Date("2026-02-10T12:00:00Z"),
+          messageId: "<att-email@example.com>",
         },
         source: rawEmail,
       },

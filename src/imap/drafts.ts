@@ -1,5 +1,6 @@
 import { createMimeMessage } from "mimetext";
 import type { ImapClient } from "./client.js";
+import { buildCompositeId, parseCompositeId } from "./resolve.js";
 
 export interface DraftOptions {
   to: string;
@@ -7,14 +8,12 @@ export interface DraftOptions {
   body: string;
   cc?: string;
   bcc?: string;
-  /** UID of the email being replied to (sets In-Reply-To and References headers) */
-  inReplyTo?: number;
-  /** Mailbox containing the email being replied to (default: "INBOX") */
-  inReplyToMailbox?: string;
+  /** Composite ID or raw Message-ID of the email being replied to */
+  inReplyTo?: string;
 }
 
 export interface DraftResult {
-  uid: number;
+  id: string;
   subject: string;
   to: string;
   date: string;
@@ -45,33 +44,6 @@ export async function findDraftsFolder(imapClient: ImapClient): Promise<string> 
   throw new Error(
     "Could not find Drafts folder. Available folders can be listed with list_folders."
   );
-}
-
-/**
- * Fetch the Message-ID header from an email by UID.
- */
-async function fetchMessageId(
-  imapClient: ImapClient,
-  uid: number,
-  mailbox: string
-): Promise<string | null> {
-  const lock = await imapClient.openMailbox(mailbox);
-  try {
-    const client = imapClient.getClient();
-    const msg = await client.fetchOne(String(uid), {
-      uid: true,
-      headers: true,
-    }, { uid: true });
-
-    if (!msg || !msg.headers) return null;
-
-    // msg.headers is a Buffer containing raw headers
-    const headersStr = msg.headers.toString("utf-8");
-    const match = headersStr.match(/^Message-ID:\s*(.+)$/mi);
-    return match ? match[1].trim() : null;
-  } finally {
-    lock.release();
-  }
 }
 
 /**
@@ -110,7 +82,7 @@ function buildMessage(
 
 /**
  * Create a new email draft in the Drafts folder.
- * If `inReplyTo` is provided, fetches the original email's Message-ID
+ * If `inReplyTo` is provided, parses the composite ID to extract the Message-ID
  * and sets In-Reply-To + References headers for proper threading.
  */
 export async function createDraft(
@@ -120,33 +92,38 @@ export async function createDraft(
 ): Promise<DraftResult> {
   let replyMessageId: string | null = null;
   if (options.inReplyTo) {
-    const mailbox = options.inReplyToMailbox || "INBOX";
-    replyMessageId = await fetchMessageId(imapClient, options.inReplyTo, mailbox);
+    const { messageId } = parseCompositeId(options.inReplyTo);
+    replyMessageId = messageId || null;
   }
 
   const raw = buildMessage(sender, options, replyMessageId);
+
+  // Extract the generated Message-ID from the raw message
+  const msgIdMatch = raw.match(/^Message-ID:\s*(.+)$/mi);
+  const generatedMessageId = msgIdMatch ? msgIdMatch[1].trim() : "";
+
   const draftsFolder = await findDraftsFolder(imapClient);
   const client = await imapClient.connect();
 
-  const result = await client.append(
+  await client.append(
     draftsFolder,
     Buffer.from(raw, "utf-8"),
-    ["\\Draft", "\\Seen"]
+    ["\\Draft"]
   );
 
-  const uid = result && result.uid ? result.uid : 0;
-
+  const now = new Date();
   return {
-    uid,
+    id: buildCompositeId(now, generatedMessageId),
     subject: options.subject,
     to: options.to,
-    date: new Date().toISOString(),
+    date: now.toISOString(),
   };
 }
 
 /**
  * Replace an existing draft. Verifies the UID is in the Drafts folder,
  * appends the new version, then deletes the old one.
+ * Accepts internal IMAP UID (tool handler resolves composite ID first).
  */
 export async function updateDraft(
   imapClient: ImapClient,

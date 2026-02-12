@@ -111,30 +111,28 @@ describe("createDraft", () => {
     const [path, content, flags] = mockClient.append.mock.calls[0];
     expect(path).toBe("Drafts");
     expect(flags).toContain("\\Draft");
-    expect(flags).toContain("\\Seen");
+    expect(flags).not.toContain("\\Seen");
     expect(content).toBeInstanceOf(Buffer);
 
     // Verify the raw message contains expected content
     const raw = content.toString("utf-8");
     expect(raw).toContain("recipient@test.com");
     expect(raw).toContain("Hello world");
-    // Subject is RFC 2047 encoded by mimetext, so check the result object instead
     expect(raw).toContain("Subject:");
 
-    expect(result.uid).toBe(500);
+    // Result should have composite id (string), not uid (number)
+    expect(typeof result.id).toBe("string");
+    expect(result.id).toContain(".");
     expect(result.subject).toBe("Test Draft");
     expect(result.to).toBe("recipient@test.com");
   });
 
   it("sets In-Reply-To and References when inReplyTo is provided", async () => {
-    const messageId = "<original-123@example.com>";
-    const headersBuffer = Buffer.from(
-      `Message-ID: ${messageId}\r\nSubject: Original\r\n`
-    );
+    const compositeId =
+      "2026-02-10T00:00:00.<original-123@example.com>";
 
     const { imapClient, mockClient } = createMockImapClient({
       mailboxes: [{ path: "Drafts", name: "Drafts", specialUse: "\\Drafts" }],
-      fetchOneResult: { uid: 100, headers: headersBuffer },
       appendResult: { uid: 501, destination: "Drafts" },
     });
 
@@ -142,12 +140,12 @@ describe("createDraft", () => {
       to: "recipient@test.com",
       subject: "Re: Original",
       body: "My reply",
-      inReplyTo: 100,
+      inReplyTo: compositeId,
     });
 
     const raw = mockClient.append.mock.calls[0][1].toString("utf-8");
     expect(raw).toContain("In-Reply-To");
-    expect(raw).toContain(messageId);
+    expect(raw).toContain("<original-123@example.com>");
     expect(raw).toContain("References");
   });
 
@@ -167,12 +165,10 @@ describe("createDraft", () => {
 
     const raw = mockClient.append.mock.calls[0][1].toString("utf-8");
     expect(raw).toContain("cc@test.com");
-    // BCC should NOT appear in raw message headers (stripped by mimetext)
-    // but we verify the call was made
     expect(mockClient.append).toHaveBeenCalledOnce();
   });
 
-  it("returns uid 0 when server does not report UIDPLUS", async () => {
+  it("returns composite id as string", async () => {
     const { imapClient } = createMockImapClient({
       mailboxes: [{ path: "Drafts", name: "Drafts", specialUse: "\\Drafts" }],
       appendResult: { destination: "Drafts" },
@@ -184,7 +180,9 @@ describe("createDraft", () => {
       body: "Body",
     });
 
-    expect(result.uid).toBe(0);
+    expect(typeof result.id).toBe("string");
+    // Should be in format YYYY-MM-DDTHH:mm:ss.<messageId>
+    expect(result.id.length).toBeGreaterThan(20);
   });
 });
 
@@ -193,7 +191,7 @@ describe("createDraft", () => {
 // ---------------------------------------------------------------------------
 
 describe("updateDraft", () => {
-  it("replaces draft and returns new UID", async () => {
+  it("replaces draft and returns new composite ID", async () => {
     const { imapClient, mockClient } = createMockImapClient({
       mailboxes: [{ path: "Drafts", name: "Drafts", specialUse: "\\Drafts" }],
       fetchOneResult: { uid: 400 },
@@ -206,7 +204,7 @@ describe("updateDraft", () => {
       body: "New content",
     });
 
-    expect(result.uid).toBe(501);
+    expect(typeof result.id).toBe("string");
     expect(result.subject).toBe("Updated Draft");
     expect(mockClient.messageDelete).toHaveBeenCalledWith("400", { uid: true });
   });

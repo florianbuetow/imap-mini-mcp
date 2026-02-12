@@ -2,6 +2,7 @@ import type { SearchObject } from "imapflow";
 import { simpleParser } from "mailparser";
 import type { EmailEntry } from "./types.js";
 import type { ImapClient } from "./client.js";
+import { buildCompositeId } from "./resolve.js";
 
 /**
  * Extract a clean email address from an IMAP envelope address object.
@@ -63,7 +64,7 @@ export async function listEmails(
       envelope: true,
     }, { uid: true })) {
       results.push({
-        uid: msg.uid,
+        id: buildCompositeId(msg.envelope?.date || new Date(0), msg.envelope?.messageId || ""),
         subject: msg.envelope?.subject || "(no subject)",
         from: extractEmailAddress(msg.envelope?.from),
         date: msg.envelope?.date?.toISOString() || "",
@@ -111,7 +112,7 @@ export async function listEmailsFromDomain(
       envelope: true,
     }, { uid: true })) {
       results.push({
-        uid: msg.uid,
+        id: buildCompositeId(msg.envelope?.date || new Date(0), msg.envelope?.messageId || ""),
         subject: msg.envelope?.subject || "(no subject)",
         from: extractEmailAddress(msg.envelope?.from),
         date: msg.envelope?.date?.toISOString() || "",
@@ -158,7 +159,7 @@ export async function listEmailsFromSender(
       envelope: true,
     }, { uid: true })) {
       results.push({
-        uid: msg.uid,
+        id: buildCompositeId(msg.envelope?.date || new Date(0), msg.envelope?.messageId || ""),
         subject: msg.envelope?.subject || "(no subject)",
         from: extractEmailAddress(msg.envelope?.from),
         date: msg.envelope?.date?.toISOString() || "",
@@ -196,11 +197,11 @@ export interface AttachmentInfo {
 }
 
 /**
- * The content returned when fetching a single email by UID.
+ * The content returned when fetching a single email.
  */
 export interface EmailContent {
-  /** IMAP UID — same stable identifier used in list results */
-  uid: number;
+  /** Composite identifier: date.messageId */
+  id: string;
   /** Email subject line */
   subject: string;
   /** Sender email address */
@@ -239,7 +240,7 @@ export async function fetchEmailContent(
     const rawSource = msg.source;
     if (!rawSource) {
       return {
-        uid: msg.uid,
+        id: buildCompositeId(msg.envelope?.date || new Date(0), msg.envelope?.messageId || ""),
         subject: msg.envelope?.subject || "(no subject)",
         from: extractEmailAddress(msg.envelope?.from),
         to: extractEmailAddress(msg.envelope?.to),
@@ -262,8 +263,9 @@ export async function fetchEmailContent(
       })
     );
 
+    const messageId = parsed.messageId || msg.envelope?.messageId || "";
     return {
-      uid: msg.uid,
+      id: buildCompositeId(parsed.date || msg.envelope?.date || new Date(0), messageId),
       subject: parsed.subject || msg.envelope?.subject || "(no subject)",
       from: parsed.from?.text || extractEmailAddress(msg.envelope?.from),
       to:

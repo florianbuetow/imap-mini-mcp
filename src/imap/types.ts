@@ -17,13 +17,10 @@ export interface ImapConfig {
  * Lightweight email listing entry.
  * This is the standard return type for all list_emails_* tools.
  * Intentionally minimal to keep token usage low for AI agents.
- *
- * The `uid` is the IMAP UID — a persistent identifier that does NOT change
- * when other emails are moved or deleted (unlike sequence numbers).
  */
 export interface EmailEntry {
-  /** IMAP UID — stable, unique identifier within this mailbox */
-  uid: number;
+  /** Composite identifier: date.messageId (globally unique, stable across moves) */
+  id: string;
   /** Email subject line */
   subject: string;
   /** Sender email address (e.g. "alice@example.com") */

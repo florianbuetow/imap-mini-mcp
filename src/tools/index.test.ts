@@ -22,6 +22,12 @@ vi.mock("../imap/index.js", async () => {
     moveEmail: vi.fn(),
     createDraft: vi.fn(),
     updateDraft: vi.fn(),
+    starEmail: vi.fn(),
+    unstarEmail: vi.fn(),
+    listStarredEmails: vi.fn(),
+    findDraftsFolder: vi.fn(),
+    resolveEmailId: vi.fn(),
+    resolveInMailbox: vi.fn(),
   };
 });
 
@@ -36,6 +42,12 @@ import {
   moveEmail,
   createDraft,
   updateDraft,
+  starEmail,
+  unstarEmail,
+  listStarredEmails,
+  findDraftsFolder,
+  resolveEmailId,
+  resolveInMailbox,
 } from "../imap/index.js";
 
 const mockListEmails = vi.mocked(listEmails);
@@ -48,15 +60,23 @@ const mockCreateFolder = vi.mocked(createFolder);
 const mockMoveEmail = vi.mocked(moveEmail);
 const mockCreateDraft = vi.mocked(createDraft);
 const mockUpdateDraft = vi.mocked(updateDraft);
+const mockStarEmail = vi.mocked(starEmail);
+const mockUnstarEmail = vi.mocked(unstarEmail);
+const mockListStarredEmails = vi.mocked(listStarredEmails);
+const mockFindDraftsFolder = vi.mocked(findDraftsFolder);
+const mockResolveEmailId = vi.mocked(resolveEmailId);
+const mockResolveInMailbox = vi.mocked(resolveInMailbox);
 const mockImapClient = {} as ImapClient;
+
+const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
 
 // ---------------------------------------------------------------------------
 // Tool metadata
 // ---------------------------------------------------------------------------
 
 describe("tool definitions", () => {
-  it("exposes exactly 16 tools", () => {
-    expect(tools).toHaveLength(16);
+  it("exposes exactly 19 tools", () => {
+    expect(tools).toHaveLength(19);
   });
 
   it("has the expected tool names", () => {
@@ -77,6 +97,9 @@ describe("tool definitions", () => {
       "move_email",
       "create_draft",
       "draft_reply",
+      "star_email",
+      "unstar_email",
+      "list_starred_emails",
       "update_draft",
     ]);
   });
@@ -110,14 +133,14 @@ describe("tool definitions", () => {
     expect(tool.inputSchema.required).toContain("sender");
   });
 
-  it("fetch_email_content requires uid", () => {
+  it("fetch_email_content requires id", () => {
     const tool = tools.find((t) => t.name === "fetch_email_content")!;
-    expect(tool.inputSchema.required).toContain("uid");
+    expect(tool.inputSchema.required).toContain("id");
   });
 
-  it("fetch_email_attachment requires uid and attachment_id", () => {
+  it("fetch_email_attachment requires id and attachment_id", () => {
     const tool = tools.find((t) => t.name === "fetch_email_attachment")!;
-    expect(tool.inputSchema.required).toContain("uid");
+    expect(tool.inputSchema.required).toContain("id");
     expect(tool.inputSchema.required).toContain("attachment_id");
   });
 });
@@ -178,7 +201,7 @@ describe("handleToolCall — list tools", () => {
   it("returns count and emails in JSON response", async () => {
     mockListEmails.mockResolvedValue([
       {
-        uid: 1,
+        id: TEST_ID,
         subject: "Test",
         from: "a@b.com",
         date: "2026-02-10T00:00:00.000Z",
@@ -192,7 +215,7 @@ describe("handleToolCall — list tools", () => {
     );
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.count).toBe(1);
-    expect(parsed.emails[0].uid).toBe(1);
+    expect(parsed.emails[0].id).toBe(TEST_ID);
     expect(parsed.emails[0].subject).toBe("Test");
   });
 });
@@ -219,7 +242,7 @@ describe("handleToolCall — list_emails_from_domain", () => {
   it("calls listEmailsFromDomain with correct arguments", async () => {
     mockListEmailsFromDomain.mockResolvedValue([
       {
-        uid: 1,
+        id: TEST_ID,
         subject: "Hello",
         from: "alice@you.com",
         date: "2026-02-10T00:00:00.000Z",
@@ -280,7 +303,7 @@ describe("handleToolCall — list_emails_from_sender", () => {
   it("calls listEmailsFromSender with correct arguments", async () => {
     mockListEmailsFromSender.mockResolvedValue([
       {
-        uid: 1,
+        id: TEST_ID,
         subject: "Hello",
         from: "alice@example.com",
         date: "2026-02-10T00:00:00.000Z",
@@ -314,30 +337,32 @@ describe("handleToolCall — fetch_email_content", () => {
     vi.clearAllMocks();
   });
 
-  it("returns error when uid is missing", async () => {
+  it("returns error when id is missing", async () => {
     const result = await handleToolCall(
       mockImapClient,
       "fetch_email_content",
       {}
     );
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("uid is required");
+    expect(result.content[0].text).toContain("id is required");
   });
 
   it("returns error when email not found", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 999, mailbox: "INBOX" });
     mockFetchContent.mockResolvedValue(null);
     const result = await handleToolCall(
       mockImapClient,
       "fetch_email_content",
-      { uid: 999 }
+      { id: TEST_ID }
     );
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("No email found");
   });
 
-  it("returns email content as JSON", async () => {
+  it("resolves composite ID and returns email content as JSON", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 42, mailbox: "INBOX" });
     mockFetchContent.mockResolvedValue({
-      uid: 42,
+      id: TEST_ID,
       subject: "Hello",
       from: "sender@test.com",
       to: "me@test.com",
@@ -349,11 +374,11 @@ describe("handleToolCall — fetch_email_content", () => {
     const result = await handleToolCall(
       mockImapClient,
       "fetch_email_content",
-      { uid: 42 }
+      { id: TEST_ID }
     );
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.uid).toBe(42);
+    expect(parsed.id).toBe(TEST_ID);
     expect(parsed.body).toBe("Hello world");
     expect(parsed.attachments).toEqual([]);
   });
@@ -368,28 +393,30 @@ describe("handleToolCall — fetch_email_attachment", () => {
     vi.clearAllMocks();
   });
 
-  it("returns error when uid or attachment_id is missing", async () => {
+  it("returns error when id or attachment_id is missing", async () => {
     const result = await handleToolCall(
       mockImapClient,
       "fetch_email_attachment",
-      { uid: 1 }
+      { id: TEST_ID }
     );
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("required");
   });
 
   it("returns error when attachment not found", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 1, mailbox: "INBOX" });
     mockFetchAttachment.mockResolvedValue(null);
     const result = await handleToolCall(
       mockImapClient,
       "fetch_email_attachment",
-      { uid: 1, attachment_id: "nope" }
+      { id: TEST_ID, attachment_id: "nope" }
     );
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("No attachment");
   });
 
   it("returns attachment data as JSON", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 10, mailbox: "INBOX" });
     mockFetchAttachment.mockResolvedValue({
       id: "att-0",
       filename: "data.csv",
@@ -401,7 +428,7 @@ describe("handleToolCall — fetch_email_attachment", () => {
     const result = await handleToolCall(
       mockImapClient,
       "fetch_email_attachment",
-      { uid: 10, attachment_id: "att-0" }
+      { id: TEST_ID, attachment_id: "att-0" }
     );
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
@@ -473,23 +500,24 @@ describe("handleToolCall — move_email", () => {
     vi.clearAllMocks();
   });
 
-  it("returns error when uid or destination_folder is missing", async () => {
+  it("returns error when id or destination_folder is missing", async () => {
     const result = await handleToolCall(mockImapClient, "move_email", {
-      uid: 1,
+      id: TEST_ID,
     });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("required");
   });
 
-  it("moves email and returns new UID", async () => {
+  it("resolves ID, moves email, and returns id + destination", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 42, mailbox: "INBOX" });
     mockMoveEmail.mockResolvedValue({ uid: 55, destination: "INBOX/Receipts" });
 
     const result = await handleToolCall(mockImapClient, "move_email", {
-      uid: 42,
+      id: TEST_ID,
       destination_folder: "INBOX/Receipts",
     });
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.uid).toBe(55);
+    expect(parsed.id).toBe(TEST_ID);
     expect(parsed.destination).toBe("INBOX/Receipts");
     expect(mockMoveEmail).toHaveBeenCalledWith(
       mockImapClient,
@@ -499,19 +527,19 @@ describe("handleToolCall — move_email", () => {
     );
   });
 
-  it("uses custom source_folder", async () => {
+  it("uses source_folder as hint", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 7, mailbox: "Sent" });
     mockMoveEmail.mockResolvedValue({ uid: 10, destination: "Archive" });
 
     await handleToolCall(mockImapClient, "move_email", {
-      uid: 7,
+      id: TEST_ID,
       source_folder: "Sent",
       destination_folder: "Archive",
     });
-    expect(mockMoveEmail).toHaveBeenCalledWith(
+    expect(mockResolveEmailId).toHaveBeenCalledWith(
       mockImapClient,
-      7,
-      "Sent",
-      "Archive"
+      TEST_ID,
+      "Sent"
     );
   });
 });
@@ -536,7 +564,7 @@ describe("handleToolCall — create_draft", () => {
 
   it("calls createDraft with correct arguments", async () => {
     mockCreateDraft.mockResolvedValue({
-      uid: 500,
+      id: TEST_ID,
       subject: "Test",
       to: "recipient@test.com",
       date: "2026-02-11T00:00:00.000Z",
@@ -559,7 +587,7 @@ describe("handleToolCall — create_draft", () => {
     });
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.uid).toBe(500);
+    expect(parsed.id).toBe(TEST_ID);
   });
 });
 
@@ -573,18 +601,19 @@ describe("handleToolCall — draft_reply", () => {
     vi.stubEnv("IMAP_USER", "me@test.com");
   });
 
-  it("returns error when uid or body is missing", async () => {
+  it("returns error when id or body is missing", async () => {
     const result = await handleToolCall(mockImapClient, "draft_reply", {
-      uid: 100,
+      id: TEST_ID,
     });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("required");
   });
 
   it("returns error when original email not found", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 999, mailbox: "INBOX" });
     mockFetchContent.mockResolvedValue(null);
     const result = await handleToolCall(mockImapClient, "draft_reply", {
-      uid: 999,
+      id: TEST_ID,
       body: "Reply text",
     });
     expect(result.isError).toBe(true);
@@ -592,8 +621,9 @@ describe("handleToolCall — draft_reply", () => {
   });
 
   it("derives to and subject from original email", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 100, mailbox: "INBOX" });
     mockFetchContent.mockResolvedValue({
-      uid: 100,
+      id: TEST_ID,
       subject: "Original Subject",
       from: "sender@test.com",
       to: "me@test.com",
@@ -602,14 +632,14 @@ describe("handleToolCall — draft_reply", () => {
       attachments: [],
     });
     mockCreateDraft.mockResolvedValue({
-      uid: 501,
+      id: "2026-02-11T00:00:00.<reply@test.com>",
       subject: "Re: Original Subject",
       to: "sender@test.com",
       date: "2026-02-11T00:00:00.000Z",
     });
 
     await handleToolCall(mockImapClient, "draft_reply", {
-      uid: 100,
+      id: TEST_ID,
       body: "My reply",
     });
 
@@ -620,14 +650,15 @@ describe("handleToolCall — draft_reply", () => {
         to: "sender@test.com",
         subject: "Re: Original Subject",
         body: "My reply",
-        inReplyTo: 100,
+        inReplyTo: TEST_ID,
       })
     );
   });
 
   it("does not double-prefix Re: on subject", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 100, mailbox: "INBOX" });
     mockFetchContent.mockResolvedValue({
-      uid: 100,
+      id: TEST_ID,
       subject: "Re: Already Replied",
       from: "sender@test.com",
       to: "me@test.com",
@@ -636,14 +667,14 @@ describe("handleToolCall — draft_reply", () => {
       attachments: [],
     });
     mockCreateDraft.mockResolvedValue({
-      uid: 502,
+      id: "2026-02-11T00:00:00.<reply@test.com>",
       subject: "Re: Already Replied",
       to: "sender@test.com",
       date: "2026-02-11T00:00:00.000Z",
     });
 
     await handleToolCall(mockImapClient, "draft_reply", {
-      uid: 100,
+      id: TEST_ID,
       body: "Reply",
     });
 
@@ -657,8 +688,9 @@ describe("handleToolCall — draft_reply", () => {
   });
 
   it("includes original recipients as CC when reply_all is true", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 100, mailbox: "INBOX" });
     mockFetchContent.mockResolvedValue({
-      uid: 100,
+      id: TEST_ID,
       subject: "Group Thread",
       from: "sender@test.com",
       to: "me@test.com, other@test.com",
@@ -667,14 +699,14 @@ describe("handleToolCall — draft_reply", () => {
       attachments: [],
     });
     mockCreateDraft.mockResolvedValue({
-      uid: 503,
+      id: "2026-02-11T00:00:00.<reply@test.com>",
       subject: "Re: Group Thread",
       to: "sender@test.com",
       date: "2026-02-11T00:00:00.000Z",
     });
 
     await handleToolCall(mockImapClient, "draft_reply", {
-      uid: 100,
+      id: TEST_ID,
       body: "Reply to all",
       reply_all: true,
     });
@@ -689,8 +721,9 @@ describe("handleToolCall — draft_reply", () => {
   });
 
   it("excludes current user from CC in reply_all", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 100, mailbox: "INBOX" });
     mockFetchContent.mockResolvedValue({
-      uid: 100,
+      id: TEST_ID,
       subject: "Thread",
       from: "sender@test.com",
       to: "me@test.com",
@@ -699,14 +732,14 @@ describe("handleToolCall — draft_reply", () => {
       attachments: [],
     });
     mockCreateDraft.mockResolvedValue({
-      uid: 504,
+      id: "2026-02-11T00:00:00.<reply@test.com>",
       subject: "Re: Thread",
       to: "sender@test.com",
       date: "2026-02-11T00:00:00.000Z",
     });
 
     await handleToolCall(mockImapClient, "draft_reply", {
-      uid: 100,
+      id: TEST_ID,
       body: "Reply",
       reply_all: true,
     });
@@ -734,27 +767,35 @@ describe("handleToolCall — update_draft", () => {
 
   it("returns error when required fields are missing", async () => {
     const result = await handleToolCall(mockImapClient, "update_draft", {
-      uid: 400,
+      id: TEST_ID,
     });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("required");
   });
 
-  it("calls updateDraft with correct arguments", async () => {
+  it("resolves ID in Drafts folder and calls updateDraft", async () => {
+    mockFindDraftsFolder.mockResolvedValue("Drafts");
+    mockResolveInMailbox.mockResolvedValue(400);
     mockUpdateDraft.mockResolvedValue({
-      uid: 501,
+      id: "2026-02-11T00:00:00.<new-draft@test.com>",
       subject: "Updated",
       to: "recipient@test.com",
       date: "2026-02-11T00:00:00.000Z",
     });
 
     const result = await handleToolCall(mockImapClient, "update_draft", {
-      uid: 400,
+      id: TEST_ID,
       to: "recipient@test.com",
       subject: "Updated",
       body: "New content",
     });
 
+    expect(mockFindDraftsFolder).toHaveBeenCalledWith(mockImapClient);
+    expect(mockResolveInMailbox).toHaveBeenCalledWith(
+      mockImapClient,
+      "<msg@example.com>",
+      "Drafts"
+    );
     expect(mockUpdateDraft).toHaveBeenCalledWith(
       mockImapClient,
       "me@test.com",
@@ -770,7 +811,70 @@ describe("handleToolCall — update_draft", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.uid).toBe(501);
+    expect(parsed.id).toBe("2026-02-11T00:00:00.<new-draft@test.com>");
+  });
+
+  it("returns error when draft not found in Drafts folder", async () => {
+    mockFindDraftsFolder.mockResolvedValue("Drafts");
+    mockResolveInMailbox.mockResolvedValue(null);
+
+    const result = await handleToolCall(mockImapClient, "update_draft", {
+      id: TEST_ID,
+      to: "recipient@test.com",
+      subject: "Updated",
+      body: "New content",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Draft not found");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — star_email / unstar_email
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — star_email", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns error when id is missing", async () => {
+    const result = await handleToolCall(mockImapClient, "star_email", {});
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("id is required");
+  });
+
+  it("resolves ID and stars the email", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 42, mailbox: "INBOX" });
+    mockStarEmail.mockResolvedValue({ uid: 42, starred: true });
+
+    const result = await handleToolCall(mockImapClient, "star_email", {
+      id: TEST_ID,
+    });
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.id).toBe(TEST_ID);
+    expect(parsed.starred).toBe(true);
+  });
+});
+
+describe("handleToolCall — unstar_email", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("resolves ID and unstars the email", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 42, mailbox: "INBOX" });
+    mockUnstarEmail.mockResolvedValue({ uid: 42, starred: false });
+
+    const result = await handleToolCall(mockImapClient, "unstar_email", {
+      id: TEST_ID,
+    });
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.id).toBe(TEST_ID);
+    expect(parsed.starred).toBe(false);
   });
 });
 
@@ -786,15 +890,15 @@ describe("tool definitions — draft tools", () => {
     expect(tool.inputSchema.required).toContain("body");
   });
 
-  it("draft_reply requires uid and body", () => {
+  it("draft_reply requires id and body", () => {
     const tool = tools.find((t) => t.name === "draft_reply")!;
-    expect(tool.inputSchema.required).toContain("uid");
+    expect(tool.inputSchema.required).toContain("id");
     expect(tool.inputSchema.required).toContain("body");
   });
 
-  it("update_draft requires uid, to, subject, and body", () => {
+  it("update_draft requires id, to, subject, and body", () => {
     const tool = tools.find((t) => t.name === "update_draft")!;
-    expect(tool.inputSchema.required).toContain("uid");
+    expect(tool.inputSchema.required).toContain("id");
     expect(tool.inputSchema.required).toContain("to");
     expect(tool.inputSchema.required).toContain("subject");
     expect(tool.inputSchema.required).toContain("body");

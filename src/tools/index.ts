@@ -19,6 +19,13 @@ import {
   moveEmail,
   createDraft,
   updateDraft,
+  starEmail,
+  unstarEmail,
+  listStarredEmails,
+  findDraftsFolder,
+  resolveEmailId,
+  resolveInMailbox,
+  parseCompositeId,
 } from "../imap/index.js";
 
 // ---------------------------------------------------------------------------
@@ -63,13 +70,21 @@ function errorResult(message: string): ToolResult {
 // ---------------------------------------------------------------------------
 
 const LIST_DESCRIPTION_SUFFIX =
-  "Returns an array of {uid, subject, from, date} objects sorted newest-first. " +
-  "The uid is a stable IMAP identifier — use it with fetch_email_content to read the full email.";
+  "Returns an array of {id, subject, from, date} objects sorted newest-first. " +
+  "The id is a globally unique identifier — use it with fetch_email_content to read the full email.";
 
 const MAILBOX_SCHEMA = {
   mailbox: {
     type: "string",
     description: 'Mailbox to list from. Default: "INBOX".',
+  },
+};
+
+const MAILBOX_HINT_SCHEMA = {
+  mailbox: {
+    type: "string",
+    description:
+      "Optional folder hint for faster lookup. If omitted, searches all folders.",
   },
 };
 
@@ -171,36 +186,32 @@ const registry: ToolRegistration[] = [
   {
     name: "fetch_email_content",
     description:
-      "Fetch the full content of a single email by its UID. " +
-      "Returns {uid, subject, from, to, date, body, attachments}. " +
+      "Fetch the full content of a single email by its id. " +
+      "Returns {id, subject, from, to, date, body, attachments}. " +
       "The attachments array contains metadata only (id, filename, contentType, size) — " +
       "use fetch_email_attachment to download actual attachment data. " +
-      "Use a uid obtained from any of the list_emails_* tools.",
+      "Use an id obtained from any of the list_emails_* tools.",
     inputSchema: {
       type: "object",
       properties: {
-        uid: {
-          type: "number",
-          description: "The IMAP UID of the email to fetch.",
-        },
-        mailbox: {
+        id: {
           type: "string",
-          description: 'Mailbox containing the email. Default: "INBOX".',
+          description: "The email identifier from list results.",
         },
+        ...MAILBOX_HINT_SCHEMA,
       },
-      required: ["uid"],
+      required: ["id"],
     },
     handler: async (imapClient, args) => {
-      const uid = args.uid as number;
-      const mailbox = (args.mailbox as string) || "INBOX";
+      const id = args.id as string;
+      const mailboxHint = args.mailbox as string | undefined;
 
-      if (!uid) return errorResult("Error: uid is required.");
+      if (!id) return errorResult("Error: id is required.");
 
+      const { uid, mailbox } = await resolveEmailId(imapClient, id, mailboxHint);
       const email = await fetchEmailContent(imapClient, uid, mailbox);
       if (!email)
-        return errorResult(
-          `No email found with UID ${uid} in ${mailbox}.`
-        );
+        return errorResult(`No email found for id "${id}".`);
 
       return jsonResult(email);
     },
@@ -210,36 +221,34 @@ const registry: ToolRegistration[] = [
     name: "fetch_email_attachment",
     description:
       "Download a specific attachment from an email. " +
-      "Requires the email UID and the attachment id (obtained from fetch_email_content). " +
+      "Requires the email id and the attachment id (obtained from fetch_email_content). " +
       "Returns {id, filename, contentType, size, contentBase64} where contentBase64 is the " +
       "base64-encoded file content.",
     inputSchema: {
       type: "object",
       properties: {
-        uid: {
-          type: "number",
-          description: "The IMAP UID of the email containing the attachment.",
+        id: {
+          type: "string",
+          description: "The email identifier from list results.",
         },
         attachment_id: {
           type: "string",
           description:
             "The attachment identifier from fetch_email_content results.",
         },
-        mailbox: {
-          type: "string",
-          description: 'Mailbox containing the email. Default: "INBOX".',
-        },
+        ...MAILBOX_HINT_SCHEMA,
       },
-      required: ["uid", "attachment_id"],
+      required: ["id", "attachment_id"],
     },
     handler: async (imapClient, args) => {
-      const uid = args.uid as number;
+      const id = args.id as string;
       const attachmentId = args.attachment_id as string;
-      const mailbox = (args.mailbox as string) || "INBOX";
+      const mailboxHint = args.mailbox as string | undefined;
 
-      if (!uid || !attachmentId)
-        return errorResult("Error: uid and attachment_id are required.");
+      if (!id || !attachmentId)
+        return errorResult("Error: id and attachment_id are required.");
 
+      const { uid, mailbox } = await resolveEmailId(imapClient, id, mailboxHint);
       const attachment = await fetchEmailAttachment(
         imapClient,
         uid,
@@ -248,7 +257,7 @@ const registry: ToolRegistration[] = [
       );
       if (!attachment)
         return errorResult(
-          `No attachment "${attachmentId}" found in email UID ${uid} (${mailbox}).`
+          `No attachment "${attachmentId}" found for email "${id}".`
         );
 
       return jsonResult(attachment);
@@ -301,44 +310,46 @@ const registry: ToolRegistration[] = [
     name: "move_email",
     description:
       "Move an email from one folder to another. " +
-      "Requires the email's UID (from list_emails_* or fetch_email_content), " +
-      "the source folder it's currently in, and the destination folder to move it to. " +
-      "Returns the new UID in the destination folder.",
+      "Requires the email's id (from list_emails_* or fetch_email_content) " +
+      "and the destination folder to move it to. " +
+      "Returns {id, destination}.",
     inputSchema: {
       type: "object",
       properties: {
-        uid: {
-          type: "number",
-          description: "The IMAP UID of the email to move.",
+        id: {
+          type: "string",
+          description: "The email identifier.",
         },
         source_folder: {
           type: "string",
-          description: 'Folder the email is currently in. Default: "INBOX".',
+          description:
+            "Optional folder hint for faster lookup. If omitted, searches all folders.",
         },
         destination_folder: {
           type: "string",
           description: "Folder to move the email to.",
         },
       },
-      required: ["uid", "destination_folder"],
+      required: ["id", "destination_folder"],
     },
     handler: async (imapClient, args) => {
-      const uid = args.uid as number;
-      const sourceFolder = (args.source_folder as string) || "INBOX";
+      const id = args.id as string;
+      const sourceHint = args.source_folder as string | undefined;
       const destinationFolder = args.destination_folder as string;
 
-      if (!uid || !destinationFolder)
+      if (!id || !destinationFolder)
         return errorResult(
-          "Error: uid and destination_folder are required."
+          "Error: id and destination_folder are required."
         );
 
+      const { uid, mailbox } = await resolveEmailId(imapClient, id, sourceHint);
       const result = await moveEmail(
         imapClient,
         uid,
-        sourceFolder,
+        mailbox,
         destinationFolder
       );
-      return jsonResult(result);
+      return jsonResult({ id, destination: result.destination });
     },
   },
 
@@ -346,8 +357,8 @@ const registry: ToolRegistration[] = [
     name: "create_draft",
     description:
       "Create a new email draft in the Drafts folder. " +
-      "Returns {uid, subject, to, date} of the created draft. " +
-      "Optionally set in_reply_to with a UID to create a threaded reply draft " +
+      "Returns {id, subject, to, date} of the created draft. " +
+      "Optionally set in_reply_to with an email id to create a threaded reply draft " +
       "(sets In-Reply-To and References headers automatically).",
     inputSchema: {
       type: "object",
@@ -373,9 +384,9 @@ const registry: ToolRegistration[] = [
           description: "BCC recipient(s).",
         },
         in_reply_to: {
-          type: "number",
+          type: "string",
           description:
-            "UID of the email being replied to (for threading). " +
+            "ID of the email being replied to (for threading). " +
             "Automatically sets In-Reply-To and References headers.",
         },
       },
@@ -396,7 +407,7 @@ const registry: ToolRegistration[] = [
         body,
         cc: args.cc as string | undefined,
         bcc: args.bcc as string | undefined,
-        inReplyTo: args.in_reply_to as number | undefined,
+        inReplyTo: args.in_reply_to as string | undefined,
       });
       return jsonResult(result);
     },
@@ -408,13 +419,13 @@ const registry: ToolRegistration[] = [
       "Create a reply draft to an existing email. " +
       "Automatically derives recipient, subject (Re: prefix), and threading headers " +
       "from the original email. Set reply_all to true to include original recipients as CC. " +
-      "Returns {uid, subject, to, date} of the created draft.",
+      "Returns {id, subject, to, date} of the created draft.",
     inputSchema: {
       type: "object",
       properties: {
-        uid: {
-          type: "number",
-          description: "UID of the email to reply to.",
+        id: {
+          type: "string",
+          description: "ID of the email to reply to.",
         },
         body: {
           type: "string",
@@ -425,27 +436,26 @@ const registry: ToolRegistration[] = [
           description:
             "Include original To/CC recipients as CC (default: false).",
         },
-        mailbox: {
-          type: "string",
-          description:
-            'Mailbox containing the original email. Default: "INBOX".',
-        },
+        ...MAILBOX_HINT_SCHEMA,
       },
-      required: ["uid", "body"],
+      required: ["id", "body"],
     },
     handler: async (imapClient, args) => {
-      const uid = args.uid as number;
+      const id = args.id as string;
       const body = args.body as string;
       const replyAll = (args.reply_all as boolean) || false;
-      const mailbox = (args.mailbox as string) || "INBOX";
+      const mailboxHint = args.mailbox as string | undefined;
 
-      if (!uid || !body)
-        return errorResult("Error: uid and body are required.");
+      if (!id || !body)
+        return errorResult("Error: id and body are required.");
+
+      // Resolve composite ID to UID + mailbox
+      const { uid, mailbox } = await resolveEmailId(imapClient, id, mailboxHint);
 
       // Fetch the original email to derive fields
       const original = await fetchEmailContent(imapClient, uid, mailbox);
       if (!original)
-        return errorResult(`Email with UID ${uid} not found.`);
+        return errorResult(`Email not found for id "${id}".`);
 
       // Derive "to" from original sender
       const to = original.from;
@@ -474,10 +484,83 @@ const registry: ToolRegistration[] = [
         subject,
         body,
         cc,
-        inReplyTo: uid,
-        inReplyToMailbox: mailbox,
+        inReplyTo: id,
       });
       return jsonResult(result);
+    },
+  },
+
+  {
+    name: "star_email",
+    description:
+      "Add a star (flag) to an email. " +
+      "Requires the email's id (from list_emails_* or fetch_email_content). " +
+      "Returns {id, starred: true}.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The email identifier to star.",
+        },
+        ...MAILBOX_HINT_SCHEMA,
+      },
+      required: ["id"],
+    },
+    handler: async (imapClient, args) => {
+      const id = args.id as string;
+      const mailboxHint = args.mailbox as string | undefined;
+
+      if (!id) return errorResult("Error: id is required.");
+
+      const { uid, mailbox } = await resolveEmailId(imapClient, id, mailboxHint);
+      await starEmail(imapClient, uid, mailbox);
+      return jsonResult({ id, starred: true });
+    },
+  },
+
+  {
+    name: "unstar_email",
+    description:
+      "Remove the star (flag) from an email. " +
+      "Requires the email's id (from list_emails_* or fetch_email_content). " +
+      "Returns {id, starred: false}.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The email identifier to unstar.",
+        },
+        ...MAILBOX_HINT_SCHEMA,
+      },
+      required: ["id"],
+    },
+    handler: async (imapClient, args) => {
+      const id = args.id as string;
+      const mailboxHint = args.mailbox as string | undefined;
+
+      if (!id) return errorResult("Error: id is required.");
+
+      const { uid, mailbox } = await resolveEmailId(imapClient, id, mailboxHint);
+      await unstarEmail(imapClient, uid, mailbox);
+      return jsonResult({ id, starred: false });
+    },
+  },
+
+  {
+    name: "list_starred_emails",
+    description:
+      "List all starred (flagged) emails in a mailbox. " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: { ...MAILBOX_SCHEMA },
+    },
+    handler: async (imapClient, args) => {
+      const mailbox = (args.mailbox as string) || "INBOX";
+      const emails = await listStarredEmails(imapClient, mailbox);
+      return jsonResult({ count: emails.length, emails });
     },
   },
 
@@ -485,15 +568,15 @@ const registry: ToolRegistration[] = [
     name: "update_draft",
     description:
       "Replace an existing draft with new content. " +
-      "The UID must refer to an email in the Drafts folder — " +
+      "The id must refer to an email in the Drafts folder — " +
       "this tool cannot modify emails in other folders. " +
-      "Returns {uid, subject, to, date} of the updated draft (with a new UID).",
+      "Returns {id, subject, to, date} of the updated draft.",
     inputSchema: {
       type: "object",
       properties: {
-        uid: {
-          type: "number",
-          description: "UID of the existing draft to replace.",
+        id: {
+          type: "string",
+          description: "ID of the existing draft to replace.",
         },
         to: {
           type: "string",
@@ -516,22 +599,34 @@ const registry: ToolRegistration[] = [
           description: "BCC recipient(s).",
         },
         in_reply_to: {
-          type: "number",
+          type: "string",
           description:
-            "UID of the email being replied to (for threading).",
+            "ID of the email being replied to (for threading).",
         },
       },
-      required: ["uid", "to", "subject", "body"],
+      required: ["id", "to", "subject", "body"],
     },
     handler: async (imapClient, args) => {
-      const uid = args.uid as number;
+      const id = args.id as string;
       const to = args.to as string;
       const subject = args.subject as string;
       const body = args.body as string;
 
-      if (!uid || !to || !subject || !body)
+      if (!id || !to || !subject || !body)
         return errorResult(
-          "Error: uid, to, subject, and body are required."
+          "Error: id, to, subject, and body are required."
+        );
+
+      // Resolve in Drafts folder specifically
+      const draftsFolder = await findDraftsFolder(imapClient);
+      const uid = await resolveInMailbox(
+        imapClient,
+        parseCompositeId(id).messageId,
+        draftsFolder
+      );
+      if (!uid)
+        return errorResult(
+          "Draft not found. The id must refer to an email in the Drafts folder."
         );
 
       const sender = process.env.IMAP_USER || "";
@@ -541,7 +636,7 @@ const registry: ToolRegistration[] = [
         body,
         cc: args.cc as string | undefined,
         bcc: args.bcc as string | undefined,
-        inReplyTo: args.in_reply_to as number | undefined,
+        inReplyTo: args.in_reply_to as string | undefined,
       });
       return jsonResult(result);
     },

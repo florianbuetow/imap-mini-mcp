@@ -60,9 +60,9 @@ IMAP_TLS_REJECT_UNAUTHORIZED=false
 
 ### Listing emails
 
-All list tools return `{count, emails}` where each email is `{uid, subject, from, date}`, sorted newest-first. Optional `folder` parameter (default: `"INBOX"`).
+All list tools return `{count, emails}` where each email is `{id, subject, from, date}`, sorted newest-first. Optional `mailbox` parameter (default: `"INBOX"`).
 
-**Addressing emails** — Every email is identified by a **UID** (unique identifier), a stable numeric ID assigned by the IMAP server. UIDs don't change when other emails are moved or deleted, making them reliable references across tool calls. Use UIDs returned by any `list_emails_*` tool to fetch content, download attachments, move emails, or create reply drafts.
+**Addressing emails** — Every email is identified by a composite **id** in the format `YYYY-MM-DDTHH:mm:ss.<Message-ID>` (e.g. `2026-02-12T14:30:25.<abc123@mail.example.com>`). This identifier is globally unique and stable across folder moves — unlike IMAP UIDs which are folder-scoped. Use the `id` returned by any `list_emails_*` tool to fetch content, download attachments, move emails, or create reply drafts. Action tools accept an optional `mailbox` hint for faster lookup; if omitted, all folders are searched.
 
 | Tool | Time range |
 |---|---|
@@ -97,14 +97,14 @@ Returns `{count, emails}`.
 
 ### `fetch_email_content`
 
-Fetch the full content of a single email by UID.
+Fetch the full content of a single email by id.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `uid` | number | yes | IMAP UID from list results |
-| `mailbox` | string | no | Default: `"INBOX"` |
+| `id` | string | yes | Email identifier from list results |
+| `mailbox` | string | no | Folder hint for faster lookup |
 
-Returns `{uid, subject, from, to, date, body, attachments}`. The `attachments` array contains metadata only: `{id, filename, contentType, size}`.
+Returns `{id, subject, from, to, date, body, attachments}`. The `attachments` array contains metadata only: `{id, filename, contentType, size}`.
 
 ### `fetch_email_attachment`
 
@@ -112,9 +112,9 @@ Download a specific attachment from an email.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `uid` | number | yes | IMAP UID of the email |
+| `id` | string | yes | Email identifier from list results |
 | `attachment_id` | string | yes | Attachment id from `fetch_email_content` |
-| `mailbox` | string | no | Default: `"INBOX"` |
+| `mailbox` | string | no | Folder hint for faster lookup |
 
 Returns `{id, filename, contentType, size, contentBase64}`.
 
@@ -140,11 +140,11 @@ Move an email from one folder to another. The email is not deleted — it is ato
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `uid` | number | yes | IMAP UID of the email to move |
-| `source_folder` | string | no | Folder the email is currently in. Default: `"INBOX"` |
+| `id` | string | yes | Email identifier |
+| `source_folder` | string | no | Folder hint for faster lookup |
 | `destination_folder` | string | yes | Folder to move the email to |
 
-Returns `{uid, destination}` where `uid` is the new UID in the destination folder.
+Returns `{id, destination}`.
 
 ### `create_draft`
 
@@ -157,9 +157,9 @@ Create a new email draft in the Drafts folder.
 | `body` | string | yes | Plain text email body |
 | `cc` | string | no | CC recipient(s) |
 | `bcc` | string | no | BCC recipient(s) |
-| `in_reply_to` | number | no | UID of email being replied to (for threading) |
+| `in_reply_to` | string | no | ID of email being replied to (for threading) |
 
-Returns `{uid, subject, to, date}`. The Drafts folder is auto-detected via the `\Drafts` special-use attribute.
+Returns `{id, subject, to, date}`. The Drafts folder is auto-detected via the `\Drafts` special-use attribute.
 
 ### `draft_reply`
 
@@ -167,28 +167,28 @@ Create a reply draft to an existing email. Automatically derives recipient, subj
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `uid` | number | yes | UID of the email to reply to |
+| `id` | string | yes | ID of the email to reply to |
 | `body` | string | yes | Plain text reply body |
 | `reply_all` | boolean | no | Include original To/CC as CC (default: `false`) |
-| `mailbox` | string | no | Mailbox containing the original email. Default: `"INBOX"` |
+| `mailbox` | string | no | Folder hint for faster lookup |
 
-Returns `{uid, subject, to, date}`.
+Returns `{id, subject, to, date}`.
 
 ### `update_draft`
 
-Replace an existing draft with new content. The UID must refer to an email in the Drafts folder — this tool cannot modify emails in other folders.
+Replace an existing draft with new content. The id must refer to an email in the Drafts folder — this tool cannot modify emails in other folders.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `uid` | number | yes | UID of the existing draft to replace |
+| `id` | string | yes | ID of the existing draft to replace |
 | `to` | string | yes | Recipient email address |
 | `subject` | string | yes | Email subject line |
 | `body` | string | yes | Plain text email body |
 | `cc` | string | no | CC recipient(s) |
 | `bcc` | string | no | BCC recipient(s) |
-| `in_reply_to` | number | no | UID of email being replied to (for threading) |
+| `in_reply_to` | string | no | ID of email being replied to (for threading) |
 
-Returns `{uid, subject, to, date}` with the new draft's UID.
+Returns `{id, subject, to, date}`.
 
 ## Development
 

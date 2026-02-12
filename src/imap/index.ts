@@ -9,11 +9,18 @@ export {
   extractEmailAddress,
 } from "./search.js";
 export { listFolders, createFolder, moveEmail } from "./folders.js";
+export { starEmail, unstarEmail, listStarredEmails } from "./flags.js";
 export {
   findDraftsFolder,
   createDraft,
   updateDraft,
 } from "./drafts.js";
+export {
+  buildCompositeId,
+  parseCompositeId,
+  resolveEmailId,
+  resolveInMailbox,
+} from "./resolve.js";
 export type { ImapConfig, EmailEntry } from "./types.js";
 export type {
   EmailContent,
