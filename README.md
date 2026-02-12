@@ -4,6 +4,10 @@ A lightweight MCP (Model Context Protocol) server for reading IMAP email and cre
 
 All tools are read-only, except for draft creation — agents can compose and update drafts but cannot send or delete emails.
 
+## Workflow Recommendation
+
+I highly recommend using a speech-to-text tool (e.g. [SuperWhisper](https://superwhisper.com) on Mac or [Whisperflow](https://whisperflow.com) on Windows) and connecting your AI desktop application (Claude, Codex, etc.) to this MCP server. That way you can converse with your email inbox using speech, which dramatically speeds up your workflow.
+
 ## How to Use
 
 ### Agent configuration
