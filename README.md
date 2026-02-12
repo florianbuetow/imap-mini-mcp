@@ -1,6 +1,6 @@
 # IMAP Mini MCP
 
-A lightweight MCP (Model Context Protocol) server for reading IMAP email and creating draft replies. Built specifically to interface with [ProtonMail Bridge](https://proton.me/mail/bridge), since ProtonMail doesn't provide direct IMAP access and requires the use of their bridge application.
+A lightweight MCP (Model Context Protocol) server for reading IMAP email and creating draft replies. Works with any standard IMAP server (Gmail, Outlook, Fastmail, etc.) and local bridges like [ProtonMail Bridge](https://proton.me/mail/bridge).
 
 All tools are read-only, except for draft creation — agents can compose and update drafts but cannot send or delete emails.
 
@@ -9,6 +9,8 @@ All tools are read-only, except for draft creation — agents can compose and up
 ### Listing emails
 
 All list tools return `{count, emails}` where each email is `{uid, subject, from, date}`, sorted newest-first. Optional `folder` parameter (default: `"INBOX"`).
+
+**Addressing emails** — Every email is identified by a **UID** (unique identifier), a stable numeric ID assigned by the IMAP server. UIDs don't change when other emails are moved or deleted, making them reliable references across tool calls. Use UIDs returned by any `list_emails_*` tool to fetch content, download attachments, move emails, or create reply drafts.
 
 | Tool | Time range |
 |---|---|
@@ -136,7 +138,33 @@ Replace an existing draft with new content. The UID must refer to an email in th
 
 Returns `{uid, subject, to, date}` with the new draft's UID.
 
-## Agent configuration
+## Configuration
+
+### Environment variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `IMAP_HOST` | yes | — | IMAP server hostname (e.g. `imap.gmail.com`) |
+| `IMAP_USER` | yes | — | Email address or username |
+| `IMAP_PASS` | yes | — | Password or app-specific password |
+| `IMAP_PORT` | no | `993` | IMAP server port |
+| `IMAP_SECURE` | no | `true` | Use TLS for the connection |
+| `IMAP_STARTTLS` | no | `true` | Upgrade to TLS via STARTTLS (when `IMAP_SECURE=false`) |
+| `IMAP_TLS_REJECT_UNAUTHORIZED` | no | `true` | Reject self-signed TLS certificates |
+
+For most providers (Gmail, Outlook, Fastmail), the defaults work — just set host, user, and password.
+
+For **ProtonMail Bridge** (localhost, self-signed cert, no TLS):
+
+```
+IMAP_HOST=127.0.0.1
+IMAP_PORT=1143
+IMAP_SECURE=false
+IMAP_STARTTLS=false
+IMAP_TLS_REJECT_UNAUTHORIZED=false
+```
+
+### Agent configuration
 
 Add to your MCP client config (e.g. `claude_desktop_config.json`):
 
@@ -148,8 +176,6 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
       "args": ["/path/to/imap-mini-mcp/dist/index.js"],
       "env": {
         "IMAP_HOST": "imap.example.com",
-        "IMAP_PORT": "993",
-        "IMAP_SECURE": "true",
         "IMAP_USER": "you@example.com",
         "IMAP_PASS": "your-password"
       }
@@ -158,7 +184,7 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 }
 ```
 
-Replace the `env` values with your actual IMAP credentials. The `args` path must point to the built `dist/index.js`.
+The `args` path must point to the built `dist/index.js`. Add any optional variables to the `env` block as needed.
 
 ## Development
 
@@ -171,23 +197,13 @@ npm run build
 
 ### Local development with `.env`
 
-For running the server directly (outside of an MCP client), create a `.env` file:
-
-```
-IMAP_HOST=imap.example.com
-IMAP_PORT=993
-IMAP_SECURE=true
-IMAP_USER=you@example.com
-IMAP_PASS=your-password
-```
-
-Then start the server:
+For running the server directly (outside of an MCP client), copy `.env.example` to `.env` and fill in your credentials, then:
 
 ```bash
 npm start
 ```
 
-This is only needed for local testing. When used through an MCP client, credentials are provided via the client config's `env` block.
+When used through an MCP client, credentials are provided via the client config's `env` block instead.
 
 ### Testing
 
