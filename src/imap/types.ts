@@ -5,6 +5,8 @@ export interface ImapConfig {
   host: string;
   port: number;
   secure: boolean;
+  starttls: boolean;
+  tlsRejectUnauthorized: boolean;
   auth: {
     user: string;
     pass: string;
