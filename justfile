@@ -9,6 +9,7 @@ lint:
 # Run tests
 test:
     npx vitest run
+    npx tsx test-integration.ts
 
 # Run tests in watch mode
 test-watch:

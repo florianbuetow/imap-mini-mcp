@@ -51,6 +51,33 @@ export function classifyImapError(error: unknown, config: ImapConfig): Error {
   return new Error(`IMAP error: ${err.message}`);
 }
 
+function isRetryableMailboxLockError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const err = error as Error & { code?: string };
+  if (
+    err.code &&
+    [
+      "ECONNRESET",
+      "EPIPE",
+      "ETIMEDOUT",
+      "ECONNREFUSED",
+      "ENOTFOUND",
+      "EHOSTUNREACH",
+      "ENETUNREACH",
+      "EAI_AGAIN",
+    ].includes(err.code)
+  ) {
+    return true;
+  }
+
+  return /connection|socket|not connected|closed|broken pipe|timeout/i.test(
+    err.message
+  );
+}
+
 /**
  * Manages the IMAP connection lifecycle.
  * Wraps ImapFlow to provide a clean interface for the MCP tools.
@@ -105,6 +132,15 @@ export class ImapClient {
       this.client = null;
     });
 
+    // EventEmitter requires handling "error" events, otherwise Node throws.
+    // ImapFlow also emits "close" after "error", but we clear state here too
+    // so reconnect behavior is immediate even if ordering changes.
+    flow.on("error", (error) => {
+      const err = classifyImapError(error, this.config);
+      process.stderr.write(`IMAP connection error: ${err.message}\n`);
+      this.client = null;
+    });
+
     this.client = flow;
     return this.client;
   }
@@ -138,6 +174,10 @@ export class ImapClient {
     try {
       return await client.getMailboxLock(path);
     } catch (error) {
+      if (!isRetryableMailboxLockError(error)) {
+        throw error;
+      }
+
       // If the connection died between connect() and getMailboxLock(),
       // discard it and retry once with a fresh connection.
       this.client = null;

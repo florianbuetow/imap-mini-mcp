@@ -96,8 +96,8 @@ describe("ImapClient", () => {
         listeners[event] = listeners[event] || [];
         listeners[event].push(cb);
       }),
-      _emit(event: string) {
-        (listeners[event] || []).forEach((cb) => cb());
+      _emit(event: string, ...args: unknown[]) {
+        (listeners[event] || []).forEach((cb) => cb(...args));
       },
       ...overrides,
     };
@@ -167,6 +167,30 @@ describe("ImapClient", () => {
     expect(flow2).toBe(freshFlow);
   });
 
+  it("logs and clears cached client on error event", async () => {
+    const client = new ImapClient(testConfig);
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    await client.connect();
+
+    const err = Object.assign(new Error("socket hang up"), {
+      code: "ECONNRESET",
+    });
+    mockFlow._emit("error", err);
+
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/IMAP connection error:/)
+    );
+
+    const freshFlow = createMockFlow();
+    ImapFlowMock.mockImplementation(function () { return freshFlow; });
+
+    const flow2 = await client.connect();
+    expect(flow2).toBe(freshFlow);
+  });
+
   it("classifies auth failure on connect", async () => {
     const authError = Object.assign(new Error("Authentication failed"), {
       authenticationFailed: true,
@@ -219,6 +243,20 @@ describe("ImapClient", () => {
 
     const lock = await client.openMailbox("INBOX");
     expect(lock).toBe(freshLock);
+  });
+
+  it("openMailbox does not retry on non-connection errors", async () => {
+    const client = new ImapClient(testConfig);
+    await client.connect();
+
+    const mailboxErr = new Error("Mailbox does not exist");
+    mockFlow.getMailboxLock.mockRejectedValueOnce(mailboxErr);
+
+    const freshFlow = createMockFlow();
+    ImapFlowMock.mockImplementation(function () { return freshFlow; });
+
+    await expect(client.openMailbox("MISSING")).rejects.toBe(mailboxErr);
+    expect(freshFlow.connect).not.toHaveBeenCalled();
   });
 });
 
