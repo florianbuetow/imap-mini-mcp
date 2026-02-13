@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { daysAgo, extractEmailAddress, listEmails, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment } from "./search.js";
+import { daysAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment } from "./search.js";
 import type { ImapClient } from "./client.js";
 
 // ---------------------------------------------------------------------------
@@ -229,6 +229,95 @@ describe("listEmails", () => {
     expect(result[0].subject).toBe("(no subject)");
     expect(result[0].from).toBe("");
     expect(result[0].date).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listInboxMessages
+// ---------------------------------------------------------------------------
+
+describe("listInboxMessages", () => {
+  it("returns empty array when no messages exist", async () => {
+    const { imapClient } = createMockImapClient({ search: [] });
+    const result = await listInboxMessages(imapClient, 5);
+    expect(result).toEqual([]);
+  });
+
+  it("returns only the last N messages", async () => {
+    const { imapClient, mockClient } = createMockImapClient({
+      search: [100, 200, 300, 400, 500],
+      fetchMessages: [
+        {
+          uid: 500,
+          envelope: {
+            subject: "Fifth",
+            from: [{ address: "e@test.com" }],
+            date: new Date("2026-02-05"),
+            messageId: "<msg-500@test.com>",
+          },
+        },
+        {
+          uid: 400,
+          envelope: {
+            subject: "Fourth",
+            from: [{ address: "d@test.com" }],
+            date: new Date("2026-02-04"),
+            messageId: "<msg-400@test.com>",
+          },
+        },
+      ],
+    });
+
+    const result = await listInboxMessages(imapClient, 2);
+
+    // Should have fetched only 2 UIDs (500, 400)
+    expect(mockClient.fetch).toHaveBeenCalledWith(
+      "500,400",
+      { uid: true, envelope: true },
+      { uid: true }
+    );
+    expect(result).toHaveLength(2);
+    expect(result[0].subject).toBe("Fifth");
+    expect(result[1].subject).toBe("Fourth");
+  });
+
+  it("returns all messages when count exceeds total", async () => {
+    const { imapClient } = createMockImapClient({
+      search: [10, 20],
+      fetchMessages: [
+        {
+          uid: 20,
+          envelope: {
+            subject: "Second",
+            from: [{ address: "b@test.com" }],
+            date: new Date("2026-02-02"),
+            messageId: "<msg-20@test.com>",
+          },
+        },
+        {
+          uid: 10,
+          envelope: {
+            subject: "First",
+            from: [{ address: "a@test.com" }],
+            date: new Date("2026-02-01"),
+            messageId: "<msg-10@test.com>",
+          },
+        },
+      ],
+    });
+
+    const result = await listInboxMessages(imapClient, 100);
+    expect(result).toHaveLength(2);
+  });
+
+  it("always releases the mailbox lock", async () => {
+    const { imapClient, mockLock, mockClient } = createMockImapClient({
+      search: [],
+    });
+    mockClient.search.mockRejectedValueOnce(new Error("IMAP error"));
+
+    await expect(listInboxMessages(imapClient, 5)).rejects.toThrow("IMAP error");
+    expect(mockLock.release).toHaveBeenCalled();
   });
 });
 

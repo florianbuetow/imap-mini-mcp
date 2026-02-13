@@ -3,13 +3,14 @@ export {
   listEmails,
   listEmailsFromDomain,
   listEmailsFromSender,
+  listInboxMessages,
   fetchEmailContent,
   fetchEmailAttachment,
   daysAgo,
   extractEmailAddress,
 } from "./search.js";
 export { listFolders, createFolder, moveEmail } from "./folders.js";
-export { starEmail, unstarEmail, listStarredEmails, listAllStarredEmails } from "./flags.js";
+export { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails } from "./flags.js";
 export type { StarredFolderGroup } from "./flags.js";
 export {
   findDraftsFolder,

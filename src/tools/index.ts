@@ -11,6 +11,7 @@ import {
   listEmails,
   listEmailsFromDomain,
   listEmailsFromSender,
+  listInboxMessages,
   fetchEmailContent,
   fetchEmailAttachment,
   daysAgo,
@@ -21,6 +22,8 @@ import {
   updateDraft,
   starEmail,
   unstarEmail,
+  markRead,
+  markUnread,
   listAllStarredEmails,
   findDraftsFolder,
   resolveEmailId,
@@ -126,6 +129,29 @@ const registry: ToolRegistration[] = [
   createListTool("list_emails_quarter", 90, "last 90 days"),
   createListTool("list_emails_year", 365, "last 365 days"),
   createListTool("list_emails_all", undefined, ""),
+
+  {
+    name: "list_inbox_messages",
+    description:
+      "List the most recent N messages in the inbox. " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: {
+        n: {
+          type: "number",
+          description: "Number of recent messages to return.",
+        },
+      },
+      required: ["n"],
+    },
+    handler: async (imapClient, args) => {
+      const n = args.n as number;
+      if (!n || n < 1) return errorResult("Error: n must be a positive number.");
+      const emails = await listInboxMessages(imapClient, n);
+      return jsonResult({ count: emails.length, emails });
+    },
+  },
 
   {
     name: "list_emails_from_domain",
@@ -545,6 +571,64 @@ const registry: ToolRegistration[] = [
       const { uid, mailbox } = await resolveEmailId(imapClient, id, mailboxHint);
       await unstarEmail(imapClient, uid, mailbox);
       return jsonResult({ id, starred: false });
+    },
+  },
+
+  {
+    name: "mark_read",
+    description:
+      "Mark an email as read (adds the \\Seen flag). " +
+      "Requires the email's id (from list_emails_* or fetch_email_content). " +
+      "Returns {id, read: true}.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The email identifier to mark as read.",
+        },
+        ...MAILBOX_HINT_SCHEMA,
+      },
+      required: ["id"],
+    },
+    handler: async (imapClient, args) => {
+      const id = args.id as string;
+      const mailboxHint = args.mailbox as string | undefined;
+
+      if (!id) return errorResult("Error: id is required.");
+
+      const { uid, mailbox } = await resolveEmailId(imapClient, id, mailboxHint);
+      await markRead(imapClient, uid, mailbox);
+      return jsonResult({ id, read: true });
+    },
+  },
+
+  {
+    name: "mark_unread",
+    description:
+      "Mark an email as unread (removes the \\Seen flag). " +
+      "Requires the email's id (from list_emails_* or fetch_email_content). " +
+      "Returns {id, read: false}.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The email identifier to mark as unread.",
+        },
+        ...MAILBOX_HINT_SCHEMA,
+      },
+      required: ["id"],
+    },
+    handler: async (imapClient, args) => {
+      const id = args.id as string;
+      const mailboxHint = args.mailbox as string | undefined;
+
+      if (!id) return errorResult("Error: id is required.");
+
+      const { uid, mailbox } = await resolveEmailId(imapClient, id, mailboxHint);
+      await markUnread(imapClient, uid, mailbox);
+      return jsonResult({ id, read: false });
     },
   },
 

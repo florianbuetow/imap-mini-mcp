@@ -178,6 +178,53 @@ export async function listEmailsFromSender(
   }
 }
 
+/**
+ * List the most recent N emails in a mailbox (default INBOX).
+ * Fetches all UIDs, sorts descending, takes the first `count`, then fetches envelopes.
+ */
+export async function listInboxMessages(
+  imapClient: ImapClient,
+  count: number,
+  mailbox: string = "INBOX"
+): Promise<EmailEntry[]> {
+  const lock = await imapClient.openMailbox(mailbox);
+  try {
+    const client = imapClient.getClient();
+
+    const uids = await client.search({ all: true }, { uid: true });
+
+    if (!uids || uids.length === 0) {
+      return [];
+    }
+
+    // Take only the last N UIDs (highest = newest)
+    const sortedUids = uids.sort((a, b) => b - a).slice(0, count);
+
+    const results: EmailEntry[] = [];
+    for await (const msg of client.fetch(sortedUids.join(","), {
+      uid: true,
+      envelope: true,
+    }, { uid: true })) {
+      results.push({
+        id: buildCompositeId(msg.envelope?.date || new Date(0), msg.envelope?.messageId || ""),
+        subject: msg.envelope?.subject || "(no subject)",
+        from: extractEmailAddress(msg.envelope?.from),
+        date: msg.envelope?.date?.toISOString() || "",
+      });
+    }
+
+    results.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return db - da;
+    });
+
+    return results;
+  } finally {
+    lock.release();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Email content + attachment metadata
 // ---------------------------------------------------------------------------

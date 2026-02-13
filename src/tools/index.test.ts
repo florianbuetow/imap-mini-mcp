@@ -75,8 +75,8 @@ const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
 // ---------------------------------------------------------------------------
 
 describe("tool definitions", () => {
-  it("exposes exactly 19 tools", () => {
-    expect(tools).toHaveLength(19);
+  it("exposes exactly 22 tools", () => {
+    expect(tools).toHaveLength(22);
   });
 
   it("has the expected tool names", () => {
@@ -88,6 +88,7 @@ describe("tool definitions", () => {
       "list_emails_quarter",
       "list_emails_year",
       "list_emails_all",
+      "list_inbox_messages",
       "list_emails_from_domain",
       "list_emails_from_sender",
       "fetch_email_content",
@@ -99,6 +100,8 @@ describe("tool definitions", () => {
       "draft_reply",
       "star_email",
       "unstar_email",
+      "mark_read",
+      "mark_unread",
       "list_starred_emails",
       "update_draft",
     ]);

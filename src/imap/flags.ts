@@ -47,6 +47,42 @@ export async function unstarEmail(
 }
 
 /**
+ * Add the \Seen (read) flag to an email.
+ */
+export async function markRead(
+  imapClient: ImapClient,
+  uid: number,
+  mailbox: string = "INBOX"
+): Promise<{ uid: number; read: boolean }> {
+  const lock = await imapClient.openMailbox(mailbox);
+  try {
+    const client = imapClient.getClient();
+    await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
+    return { uid, read: true };
+  } finally {
+    lock.release();
+  }
+}
+
+/**
+ * Remove the \Seen (read) flag from an email.
+ */
+export async function markUnread(
+  imapClient: ImapClient,
+  uid: number,
+  mailbox: string = "INBOX"
+): Promise<{ uid: number; read: boolean }> {
+  const lock = await imapClient.openMailbox(mailbox);
+  try {
+    const client = imapClient.getClient();
+    await client.messageFlagsRemove(String(uid), ["\\Seen"], { uid: true });
+    return { uid, read: false };
+  } finally {
+    lock.release();
+  }
+}
+
+/**
  * List all starred (flagged) emails in a mailbox.
  * Returns EmailEntry[] sorted newest-first by envelope date.
  */

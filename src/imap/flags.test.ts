@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { starEmail, unstarEmail, listStarredEmails, listAllStarredEmails } from "./flags.js";
+import { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails } from "./flags.js";
 import type { ImapClient } from "./client.js";
 
 vi.mock("./folders.js", () => ({
@@ -76,6 +76,52 @@ describe("unstarEmail", () => {
     mockClient.messageFlagsRemove.mockRejectedValue(new Error("fail"));
 
     await expect(unstarEmail(imapClient, 1)).rejects.toThrow("fail");
+    expect(releaseFn).toHaveBeenCalled();
+  });
+});
+
+describe("markRead", () => {
+  it("adds \\Seen flag to the email", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    const result = await markRead(imapClient, 42, "INBOX");
+
+    expect(mockClient.messageFlagsAdd).toHaveBeenCalledWith(
+      "42",
+      ["\\Seen"],
+      { uid: true }
+    );
+    expect(result).toEqual({ uid: 42, read: true });
+  });
+
+  it("releases lock even on error", async () => {
+    const { imapClient, mockClient, releaseFn } = createMockImapClient();
+    mockClient.messageFlagsAdd.mockRejectedValue(new Error("fail"));
+
+    await expect(markRead(imapClient, 1)).rejects.toThrow("fail");
+    expect(releaseFn).toHaveBeenCalled();
+  });
+});
+
+describe("markUnread", () => {
+  it("removes \\Seen flag from the email", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    const result = await markUnread(imapClient, 42, "INBOX");
+
+    expect(mockClient.messageFlagsRemove).toHaveBeenCalledWith(
+      "42",
+      ["\\Seen"],
+      { uid: true }
+    );
+    expect(result).toEqual({ uid: 42, read: false });
+  });
+
+  it("releases lock even on error", async () => {
+    const { imapClient, mockClient, releaseFn } = createMockImapClient();
+    mockClient.messageFlagsRemove.mockRejectedValue(new Error("fail"));
+
+    await expect(markUnread(imapClient, 1)).rejects.toThrow("fail");
     expect(releaseFn).toHaveBeenCalled();
   });
 });
