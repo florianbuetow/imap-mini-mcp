@@ -3,3 +3,4 @@ dist/
 .env
 *.js.map
 *.d.ts.map
+docs/plans/
