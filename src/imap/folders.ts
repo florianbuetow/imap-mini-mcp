@@ -66,3 +66,42 @@ export async function moveEmail(
     lock.release();
   }
 }
+
+/**
+ * Check whether a folder path exists on the server.
+ */
+export async function folderExists(
+  imapClient: ImapClient,
+  path: string
+): Promise<boolean> {
+  const folders = await listFolders(imapClient);
+  return folders.some((f) => f.path === path);
+}
+
+/**
+ * Bulk-move all emails matching a FROM query from one folder to another.
+ * Returns the number of emails moved.
+ *
+ * @param fromQuery - full email address or "@domain" to match against the From header
+ */
+export async function bulkMoveBySender(
+  imapClient: ImapClient,
+  sourceFolder: string,
+  destinationFolder: string,
+  fromQuery: string
+): Promise<number> {
+  const lock = await imapClient.openMailbox(sourceFolder);
+  try {
+    const client = imapClient.getClient();
+
+    const uids = await client.search({ from: fromQuery }, { uid: true });
+    if (!uids || uids.length === 0) {
+      return 0;
+    }
+
+    await client.messageMove(uids.join(","), destinationFolder, { uid: true });
+    return uids.length;
+  } finally {
+    lock.release();
+  }
+}

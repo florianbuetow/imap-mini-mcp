@@ -20,6 +20,8 @@ vi.mock("../imap/index.js", async () => {
     listFolders: vi.fn(),
     createFolder: vi.fn(),
     moveEmail: vi.fn(),
+    folderExists: vi.fn(),
+    bulkMoveBySender: vi.fn(),
     createDraft: vi.fn(),
     updateDraft: vi.fn(),
     starEmail: vi.fn(),
@@ -40,6 +42,8 @@ import {
   listFolders,
   createFolder,
   moveEmail,
+  folderExists,
+  bulkMoveBySender,
   createDraft,
   updateDraft,
   starEmail,
@@ -58,6 +62,8 @@ const mockFetchAttachment = vi.mocked(fetchEmailAttachment);
 const mockListFolders = vi.mocked(listFolders);
 const mockCreateFolder = vi.mocked(createFolder);
 const mockMoveEmail = vi.mocked(moveEmail);
+const mockFolderExists = vi.mocked(folderExists);
+const mockBulkMoveBySender = vi.mocked(bulkMoveBySender);
 const mockCreateDraft = vi.mocked(createDraft);
 const mockUpdateDraft = vi.mocked(updateDraft);
 const mockStarEmail = vi.mocked(starEmail);
@@ -75,8 +81,8 @@ const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
 // ---------------------------------------------------------------------------
 
 describe("tool definitions", () => {
-  it("exposes exactly 22 tools", () => {
-    expect(tools).toHaveLength(22);
+  it("exposes exactly 24 tools", () => {
+    expect(tools).toHaveLength(24);
   });
 
   it("has the expected tool names", () => {
@@ -104,6 +110,8 @@ describe("tool definitions", () => {
       "mark_unread",
       "list_starred_emails",
       "update_draft",
+      "bulk_move_by_sender_email",
+      "bulk_move_by_sender_domain",
     ]);
   });
 
@@ -905,6 +913,210 @@ describe("tool definitions — draft tools", () => {
     expect(tool.inputSchema.required).toContain("to");
     expect(tool.inputSchema.required).toContain("subject");
     expect(tool.inputSchema.required).toContain("body");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — bulk_move_by_sender_email
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — bulk_move_by_sender_email", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("requires sender, source_folder, and destination_folder", () => {
+    const tool = tools.find((t) => t.name === "bulk_move_by_sender_email")!;
+    expect(tool.inputSchema.required).toContain("sender");
+    expect(tool.inputSchema.required).toContain("source_folder");
+    expect(tool.inputSchema.required).toContain("destination_folder");
+  });
+
+  it("returns error when required params are missing", async () => {
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_email",
+      { sender: "alice@example.com" }
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("required");
+  });
+
+  it("returns error when source folder not found", async () => {
+    mockFolderExists.mockResolvedValueOnce(false);
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_email",
+      {
+        sender: "alice@example.com",
+        source_folder: "NonExistent",
+        destination_folder: "Archive",
+      }
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Source folder not found");
+  });
+
+  it("returns error when destination folder not found", async () => {
+    mockFolderExists.mockResolvedValueOnce(true);
+    mockFolderExists.mockResolvedValueOnce(false);
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_email",
+      {
+        sender: "alice@example.com",
+        source_folder: "INBOX",
+        destination_folder: "NonExistent",
+      }
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Destination folder not found");
+  });
+
+  it("returns error when no emails match", async () => {
+    mockFolderExists.mockResolvedValue(true);
+    mockBulkMoveBySender.mockResolvedValue(0);
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_email",
+      {
+        sender: "nobody@example.com",
+        source_folder: "INBOX",
+        destination_folder: "Archive",
+      }
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("No emails from");
+  });
+
+  it("calls bulkMoveBySender and returns moved count", async () => {
+    mockFolderExists.mockResolvedValue(true);
+    mockBulkMoveBySender.mockResolvedValue(5);
+
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_email",
+      {
+        sender: "alice@example.com",
+        source_folder: "INBOX",
+        destination_folder: "Archive",
+      }
+    );
+
+    expect(mockBulkMoveBySender).toHaveBeenCalledWith(
+      mockImapClient,
+      "INBOX",
+      "Archive",
+      "alice@example.com"
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.moved).toBe(5);
+    expect(parsed.source_folder).toBe("INBOX");
+    expect(parsed.destination_folder).toBe("Archive");
+    expect(parsed.sender).toBe("alice@example.com");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — bulk_move_by_sender_domain
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — bulk_move_by_sender_domain", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("requires domain, source_folder, and destination_folder", () => {
+    const tool = tools.find((t) => t.name === "bulk_move_by_sender_domain")!;
+    expect(tool.inputSchema.required).toContain("domain");
+    expect(tool.inputSchema.required).toContain("source_folder");
+    expect(tool.inputSchema.required).toContain("destination_folder");
+  });
+
+  it("returns error when required params are missing", async () => {
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_domain",
+      { domain: "example.com" }
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("required");
+  });
+
+  it("returns error when source folder not found", async () => {
+    mockFolderExists.mockResolvedValueOnce(false);
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_domain",
+      {
+        domain: "example.com",
+        source_folder: "NonExistent",
+        destination_folder: "Archive",
+      }
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Source folder not found");
+  });
+
+  it("returns error when destination folder not found", async () => {
+    mockFolderExists.mockResolvedValueOnce(true);
+    mockFolderExists.mockResolvedValueOnce(false);
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_domain",
+      {
+        domain: "example.com",
+        source_folder: "INBOX",
+        destination_folder: "NonExistent",
+      }
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Destination folder not found");
+  });
+
+  it("returns error when no emails match", async () => {
+    mockFolderExists.mockResolvedValue(true);
+    mockBulkMoveBySender.mockResolvedValue(0);
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_domain",
+      {
+        domain: "nobody.com",
+        source_folder: "INBOX",
+        destination_folder: "Archive",
+      }
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("No emails from");
+  });
+
+  it("calls bulkMoveBySender with @domain prefix and returns moved count", async () => {
+    mockFolderExists.mockResolvedValue(true);
+    mockBulkMoveBySender.mockResolvedValue(12);
+
+    const result = await handleToolCall(
+      mockImapClient,
+      "bulk_move_by_sender_domain",
+      {
+        domain: "example.com",
+        source_folder: "INBOX",
+        destination_folder: "Promotions",
+      }
+    );
+
+    expect(mockBulkMoveBySender).toHaveBeenCalledWith(
+      mockImapClient,
+      "INBOX",
+      "Promotions",
+      "@example.com"
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.moved).toBe(12);
+    expect(parsed.source_folder).toBe("INBOX");
+    expect(parsed.destination_folder).toBe("Promotions");
+    expect(parsed.domain).toBe("example.com");
   });
 });
 

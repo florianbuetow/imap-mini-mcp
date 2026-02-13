@@ -18,6 +18,8 @@ import {
   listFolders,
   createFolder,
   moveEmail,
+  folderExists,
+  bulkMoveBySender,
   createDraft,
   updateDraft,
   starEmail,
@@ -723,6 +725,130 @@ const registry: ToolRegistration[] = [
         inReplyTo: args.in_reply_to as string | undefined,
       });
       return jsonResult(result);
+    },
+  },
+
+  {
+    name: "bulk_move_by_sender_email",
+    description:
+      "Move all emails from a specific sender email address in a source folder to a destination folder. " +
+      "Returns {moved, source_folder, destination_folder, sender}.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sender: {
+          type: "string",
+          description:
+            'The sender email address to match (e.g. "alice@example.com").',
+        },
+        source_folder: {
+          type: "string",
+          description: "Folder to search for matching emails.",
+        },
+        destination_folder: {
+          type: "string",
+          description: "Folder to move matching emails to.",
+        },
+      },
+      required: ["sender", "source_folder", "destination_folder"],
+    },
+    handler: async (imapClient, args) => {
+      const sender = args.sender as string;
+      const sourceFolder = args.source_folder as string;
+      const destinationFolder = args.destination_folder as string;
+
+      if (!sender || !sourceFolder || !destinationFolder)
+        return errorResult(
+          "Error: sender, source_folder, and destination_folder are required."
+        );
+
+      if (!(await folderExists(imapClient, sourceFolder)))
+        return errorResult(`Source folder not found: "${sourceFolder}".`);
+      if (!(await folderExists(imapClient, destinationFolder)))
+        return errorResult(
+          `Destination folder not found: "${destinationFolder}".`
+        );
+
+      const moved = await bulkMoveBySender(
+        imapClient,
+        sourceFolder,
+        destinationFolder,
+        sender
+      );
+
+      if (moved === 0)
+        return errorResult(
+          `No emails from "${sender}" found in "${sourceFolder}".`
+        );
+
+      return jsonResult({
+        moved,
+        source_folder: sourceFolder,
+        destination_folder: destinationFolder,
+        sender,
+      });
+    },
+  },
+
+  {
+    name: "bulk_move_by_sender_domain",
+    description:
+      "Move all emails from a specific sender domain in a source folder to a destination folder. " +
+      "Returns {moved, source_folder, destination_folder, domain}.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          description:
+            'The sender domain to match (e.g. "example.com"). Do not include the @ sign.',
+        },
+        source_folder: {
+          type: "string",
+          description: "Folder to search for matching emails.",
+        },
+        destination_folder: {
+          type: "string",
+          description: "Folder to move matching emails to.",
+        },
+      },
+      required: ["domain", "source_folder", "destination_folder"],
+    },
+    handler: async (imapClient, args) => {
+      const domain = args.domain as string;
+      const sourceFolder = args.source_folder as string;
+      const destinationFolder = args.destination_folder as string;
+
+      if (!domain || !sourceFolder || !destinationFolder)
+        return errorResult(
+          "Error: domain, source_folder, and destination_folder are required."
+        );
+
+      if (!(await folderExists(imapClient, sourceFolder)))
+        return errorResult(`Source folder not found: "${sourceFolder}".`);
+      if (!(await folderExists(imapClient, destinationFolder)))
+        return errorResult(
+          `Destination folder not found: "${destinationFolder}".`
+        );
+
+      const moved = await bulkMoveBySender(
+        imapClient,
+        sourceFolder,
+        destinationFolder,
+        "@" + domain
+      );
+
+      if (moved === 0)
+        return errorResult(
+          `No emails from "@${domain}" found in "${sourceFolder}".`
+        );
+
+      return jsonResult({
+        moved,
+        source_folder: sourceFolder,
+        destination_folder: destinationFolder,
+        domain,
+      });
     },
   },
 ];
