@@ -65,10 +65,19 @@ describe("classifyImapError", () => {
     expect(result.message).toMatch(/TLS\/SSL/i);
   });
 
-  it("falls back to generic message for unknown errors", () => {
+  it("detects unexpected close", () => {
+    const err = new Error("Unexpected close");
+    const result = classifyImapError(err, testConfig);
+    expect(result.message).toMatch(/connection closed unexpectedly/i);
+    expect(result.message).toMatch(/IMAP_STARTTLS/);
+    expect(result.message).toMatch(/IMAP_TLS_REJECT_UNAUTHORIZED/);
+  });
+
+  it("falls back to generic message with env var hints", () => {
     const err = new Error("something unexpected");
     const result = classifyImapError(err, testConfig);
-    expect(result.message).toBe("IMAP error: something unexpected");
+    expect(result.message).toMatch(/something unexpected/);
+    expect(result.message).toMatch(/IMAP_HOST/);
   });
 
   it("handles non-Error values", () => {

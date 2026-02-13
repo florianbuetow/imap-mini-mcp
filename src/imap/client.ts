@@ -44,11 +44,19 @@ export function classifyImapError(error: unknown, config: ImapConfig): Error {
     /tls|certificate/i.test(err.message)
   ) {
     return new Error(
-      "TLS/SSL error connecting to IMAP server — check IMAP_SECURE setting."
+      "TLS/SSL error connecting to IMAP server — check IMAP_SECURE and IMAP_TLS_REJECT_UNAUTHORIZED settings."
     );
   }
 
-  return new Error(`IMAP error: ${err.message}`);
+  if (/unexpected close|closed unexpectedly/i.test(err.message)) {
+    return new Error(
+      "IMAP connection closed unexpectedly — this usually indicates a TLS/STARTTLS mismatch. Verify these environment variables are set correctly: IMAP_HOST, IMAP_PORT, IMAP_SECURE, IMAP_STARTTLS, IMAP_TLS_REJECT_UNAUTHORIZED."
+    );
+  }
+
+  return new Error(
+    `IMAP error: ${err.message}. Verify these environment variables are set correctly: IMAP_HOST, IMAP_PORT, IMAP_SECURE, IMAP_STARTTLS, IMAP_TLS_REJECT_UNAUTHORIZED.`
+  );
 }
 
 function isRetryableMailboxLockError(error: unknown): boolean {

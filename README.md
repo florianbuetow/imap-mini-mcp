@@ -46,7 +46,7 @@ The `args` path must point to the built `dist/index.js`. Add any optional variab
 
 For most providers (Gmail, Outlook, Fastmail), the defaults work — just set host, user, and password.
 
-For **ProtonMail Bridge** (localhost, self-signed cert, no TLS):
+For **ProtonMail Bridge** — all five settings below are required (the bridge listens on localhost without TLS, uses a self-signed certificate, and does not support STARTTLS):
 
 ```
 IMAP_HOST=127.0.0.1
@@ -54,6 +54,28 @@ IMAP_PORT=1143
 IMAP_SECURE=false
 IMAP_STARTTLS=false
 IMAP_TLS_REJECT_UNAUTHORIZED=false
+```
+
+Or as MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "imap-mini-mcp": {
+      "command": "node",
+      "args": ["/path/to/imap-mini-mcp/dist/index.js"],
+      "env": {
+        "IMAP_HOST": "127.0.0.1",
+        "IMAP_PORT": "1143",
+        "IMAP_SECURE": "false",
+        "IMAP_STARTTLS": "false",
+        "IMAP_TLS_REJECT_UNAUTHORIZED": "false",
+        "IMAP_USER": "you@proton.me",
+        "IMAP_PASS": "your-bridge-password"
+      }
+    }
+  }
+}
 ```
 
 ## Tools
@@ -189,6 +211,30 @@ Replace an existing draft with new content. The id must refer to an email in the
 | `in_reply_to` | string | no | ID of email being replied to (for threading) |
 
 Returns `{id, subject, to, date}`.
+
+## Troubleshooting
+
+### "IMAP connection closed unexpectedly" or "Server disconnected"
+
+This almost always means the server rejected the connection due to a TLS/STARTTLS mismatch. Verify these environment variables are set correctly in your MCP client config:
+
+| Variable | Check |
+|---|---|
+| `IMAP_HOST` | Correct hostname or IP |
+| `IMAP_PORT` | Matches your server (993 for TLS, 143/1143 for plain) |
+| `IMAP_SECURE` | `true` for port 993, `false` for plain connections |
+| `IMAP_STARTTLS` | `false` if your server does not support STARTTLS |
+| `IMAP_TLS_REJECT_UNAUTHORIZED` | `false` if your server uses a self-signed certificate |
+
+Local IMAP bridges (e.g. ProtonMail Bridge) typically require `IMAP_SECURE=false`, `IMAP_STARTTLS=false`, and `IMAP_TLS_REJECT_UNAUTHORIZED=false`. See the ProtonMail Bridge config example in the [Environment variables](#environment-variables) section above.
+
+### "IMAP authentication failed"
+
+Check that `IMAP_USER` and `IMAP_PASS` are correct. Some providers (e.g. Gmail) require an app-specific password rather than your account password.
+
+### "Cannot reach IMAP server — connection refused"
+
+The IMAP server is not running or not listening on the configured host and port. For local bridges, make sure the bridge application is running.
 
 ## Development
 
