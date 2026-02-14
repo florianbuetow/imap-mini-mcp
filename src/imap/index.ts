@@ -7,6 +7,8 @@ export {
   fetchEmailContent,
   fetchEmailAttachment,
   daysAgo,
+  hoursAgo,
+  minutesAgo,
   extractEmailAddress,
 } from "./search.js";
 export { listFolders, createFolder, moveEmail, folderExists, bulkMoveBySender } from "./folders.js";

@@ -29,6 +29,20 @@ export function daysAgo(n: number): Date {
 }
 
 /**
+ * Compute a Date object for N hours ago.
+ */
+export function hoursAgo(n: number): Date {
+  return new Date(Date.now() - n * 60 * 60 * 1000);
+}
+
+/**
+ * Compute a Date object for N minutes ago.
+ */
+export function minutesAgo(n: number): Date {
+  return new Date(Date.now() - n * 60 * 1000);
+}
+
+/**
  * List emails received since a given date.
  * If `since` is undefined, lists ALL emails (no date filter).
  *

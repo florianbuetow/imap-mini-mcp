@@ -15,6 +15,8 @@ import {
   fetchEmailContent,
   fetchEmailAttachment,
   daysAgo,
+  hoursAgo,
+  minutesAgo,
   listFolders,
   createFolder,
   moveEmail,
@@ -143,6 +145,79 @@ const registry: ToolRegistration[] = [
         n: {
           type: "number",
           description: "Number of recent messages to return.",
+        },
+      },
+      required: ["n"],
+    },
+    handler: async (imapClient, args) => {
+      const n = args.n as number;
+      if (!n || n < 1) return errorResult("Error: n must be a positive number.");
+      const emails = await listInboxMessages(imapClient, n);
+      return jsonResult({ count: emails.length, emails });
+    },
+  },
+
+  {
+    name: "list_emails_n_hours",
+    description:
+      "List all emails received in the last N hours. " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: {
+        hours: {
+          type: "number",
+          description: "Number of hours to look back.",
+        },
+      },
+      required: ["hours"],
+    },
+    handler: async (imapClient, args) => {
+      const hours = args.hours as number;
+      if (!hours || hours < 1)
+        return errorResult("Error: hours must be a positive number.");
+      const since = hoursAgo(hours);
+      const emails = await listEmails(imapClient, since, "INBOX");
+      return jsonResult({ count: emails.length, emails });
+    },
+  },
+
+  {
+    name: "list_emails_n_minutes",
+    description:
+      "List all emails received in the last N minutes. " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: {
+        minutes: {
+          type: "number",
+          description: "Number of minutes to look back.",
+        },
+      },
+      required: ["minutes"],
+    },
+    handler: async (imapClient, args) => {
+      const minutes = args.minutes as number;
+      if (!minutes || minutes < 1)
+        return errorResult("Error: minutes must be a positive number.");
+      const since = minutesAgo(minutes);
+      const emails = await listEmails(imapClient, since, "INBOX");
+      return jsonResult({ count: emails.length, emails });
+    },
+  },
+
+  {
+    name: "list_n_recent_emails",
+    description:
+      "List the N most recent emails from the inbox. " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: {
+        n: {
+          type: "number",
+          description: "Number of recent emails to return.",
         },
       },
       required: ["n"],

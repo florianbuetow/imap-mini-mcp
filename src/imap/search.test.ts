@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { daysAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment } from "./search.js";
+import { daysAgo, hoursAgo, minutesAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment } from "./search.js";
 import type { ImapClient } from "./client.js";
 
 // ---------------------------------------------------------------------------
@@ -39,6 +39,50 @@ describe("daysAgo", () => {
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
     expect(diffDays).toBeGreaterThanOrEqual(365);
     expect(diffDays).toBeLessThanOrEqual(366);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hoursAgo
+// ---------------------------------------------------------------------------
+
+describe("hoursAgo", () => {
+  it("returns a date N hours in the past", () => {
+    const now = Date.now();
+    const result = hoursAgo(3);
+    const diffHours = (now - result.getTime()) / (1000 * 60 * 60);
+    expect(diffHours).toBeGreaterThanOrEqual(2.99);
+    expect(diffHours).toBeLessThanOrEqual(3.01);
+  });
+
+  it("returns now for hoursAgo(0)", () => {
+    const before = Date.now();
+    const result = hoursAgo(0);
+    const after = Date.now();
+    expect(result.getTime()).toBeGreaterThanOrEqual(before);
+    expect(result.getTime()).toBeLessThanOrEqual(after);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// minutesAgo
+// ---------------------------------------------------------------------------
+
+describe("minutesAgo", () => {
+  it("returns a date N minutes in the past", () => {
+    const now = Date.now();
+    const result = minutesAgo(30);
+    const diffMinutes = (now - result.getTime()) / (1000 * 60);
+    expect(diffMinutes).toBeGreaterThanOrEqual(29.99);
+    expect(diffMinutes).toBeLessThanOrEqual(30.01);
+  });
+
+  it("returns now for minutesAgo(0)", () => {
+    const before = Date.now();
+    const result = minutesAgo(0);
+    const after = Date.now();
+    expect(result.getTime()).toBeGreaterThanOrEqual(before);
+    expect(result.getTime()).toBeLessThanOrEqual(after);
   });
 });
 

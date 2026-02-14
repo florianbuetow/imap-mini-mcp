@@ -45,21 +45,21 @@ async function callTool(name: string, args: Record<string, unknown> = {}) {
 }
 
 try {
-  const result = await client.callTool({ name: "list_emails_24h", arguments: {} });
-  const data = JSON.parse((result.content as any)[0].text);
-  console.error(`Fetching content for ${data.count} emails...\n`);
+  // Test list_emails_n_hours
+  await callTool("list_emails_n_hours", { hours: 6 });
 
-  for (const e of data.emails) {
-    const content = await client.callTool({ name: "fetch_email_content", arguments: { id: e.id } });
-    const body = JSON.parse((content.content as any)[0].text);
-    if (e.subject.includes("Backend Software Engineer Amsterdam") && e.subject.includes("Message replied")) {
-      console.log(`Subject: ${body.subject}`);
-      console.log(`From: ${body.from}`);
-      console.log(`To: ${body.to}`);
-      console.log(`Date: ${body.date}`);
-      console.log(`\nFull body:\n${body.body}`);
-    }
-  }
+  // Test list_emails_n_minutes
+  await callTool("list_emails_n_minutes", { minutes: 30 });
+
+  // Test list_n_recent_emails
+  await callTool("list_n_recent_emails", { n: 5 });
+
+  // Test existing tools for sanity
+  await callTool("list_emails_24h");
+  await callTool("list_inbox_messages", { n: 3 });
+  await callTool("list_folders");
+
+  console.log("\n=== All integration tests passed ===");
 } catch (err) {
   console.error("\n!!! FAILED !!!", err);
   process.exit(1);
