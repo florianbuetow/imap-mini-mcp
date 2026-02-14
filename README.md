@@ -6,6 +6,8 @@ A lightweight MCP (Model Context Protocol) server for reading IMAP email and cre
 
 Agents can read, search, move, star, and organize emails, and compose drafts — but cannot send or delete emails.
 
+See [CHANGELOG.md](CHANGELOG.md) for recently added features.
+
 ## Workflow Recommendation
 
 I highly recommend using a speech-to-text tool (e.g. [SuperWhisper](https://superwhisper.com) on Mac or [Whisperflow](https://whisperflow.com) on Windows) and connecting your AI desktop application (Claude, Codex, etc.) to this MCP server. That way you can converse with your email inbox using speech, which will dramatically speed up your workflow.
@@ -113,8 +115,6 @@ Every email is identified by a composite **id** (`YYYY-MM-DDTHH:mm:ss.<Message-I
 | `create_draft` | Create a new draft | `to`, `subject`, `body`, `cc?`, `bcc?`, `in_reply_to?` |
 | `draft_reply` | Create a reply draft from an existing email | `id`, `body`, `reply_all?`, `mailbox?` |
 | `update_draft` | Replace an existing draft (Drafts folder only) | `id`, `to`, `subject`, `body`, `cc?`, `bcc?`, `in_reply_to?` |
-
-See [CHANGELOG.md](CHANGELOG.md) for a list of recently added features.
 
 ## Troubleshooting
 
