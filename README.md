@@ -114,6 +114,8 @@ Every email is identified by a composite **id** (`YYYY-MM-DDTHH:mm:ss.<Message-I
 | `draft_reply` | Create a reply draft from an existing email | `id`, `body`, `reply_all?`, `mailbox?` |
 | `update_draft` | Replace an existing draft (Drafts folder only) | `id`, `to`, `subject`, `body`, `cc?`, `bcc?`, `in_reply_to?` |
 
+See [CHANGELOG.md](CHANGELOG.md) for a list of recently added features.
+
 ## Troubleshooting
 
 ### "IMAP connection closed unexpectedly" or "Server disconnected"
