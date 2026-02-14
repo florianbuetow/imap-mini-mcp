@@ -93,6 +93,9 @@ Every email is identified by a composite **id** (`YYYY-MM-DDTHH:mm:ss.<Message-I
 | `list_emails_year` | Emails from the last 365 days | `mailbox?` |
 | `list_emails_all` | All emails (no date filter) | `mailbox?` |
 | `list_inbox_messages` | Most recent N messages in the inbox | `n` |
+| `list_emails_n_hours` | Emails from the last N hours | `hours` |
+| `list_emails_n_minutes` | Emails from the last N minutes | `minutes` |
+| `list_n_recent_emails` | N most recent emails from the inbox | `n` |
 | `list_emails_from_domain` | All emails from a domain | `domain`, `mailbox?` |
 | `list_emails_from_sender` | All emails from a sender address | `sender`, `mailbox?` |
 | `list_starred_emails` | Starred emails across all folders | — |
