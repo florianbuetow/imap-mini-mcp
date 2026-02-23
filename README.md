@@ -84,22 +84,11 @@ Or as MCP client config:
 
 ## Tools
 
-Every email is identified by a composite **id** (`YYYY-MM-DDTHH:mm:ss.<Message-ID>`) that is globally unique and stable across folder moves. Use the `id` returned by any listing tool to fetch content, download attachments, move emails, or create reply drafts. Action tools accept an optional `mailbox` hint for faster lookup; if omitted, all folders are searched.
+Every email is identified by a composite **id** (`YYYY-MM-DDTHH:mm:ss.<Message-ID>`) that is globally unique and stable across folder moves. Use the `id` returned by `find_emails` to fetch content, download attachments, move emails, or create reply drafts. Action tools accept an optional `mailbox` hint for faster lookup; if omitted, all folders are searched.
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `list_emails_24h` | Emails from the last 24 hours | `mailbox?` |
-| `list_emails_7days` | Emails from the last 7 days | `mailbox?` |
-| `list_emails_month` | Emails from the last 30 days | `mailbox?` |
-| `list_emails_quarter` | Emails from the last 90 days | `mailbox?` |
-| `list_emails_year` | Emails from the last 365 days | `mailbox?` |
-| `list_emails_all` | All emails (no date filter) | `mailbox?` |
-| `list_inbox_messages` | Most recent N messages in the inbox | `n` |
-| `list_emails_n_hours` | Emails from the last N hours | `hours` |
-| `list_emails_n_minutes` | Emails from the last N minutes | `minutes` |
-| `list_n_recent_emails` | N most recent emails from the inbox | `n` |
-| `list_emails_from_domain` | All emails from a domain | `domain`, `mailbox?` |
-| `list_emails_from_sender` | All emails from a sender address | `sender`, `mailbox?` |
+| `find_emails` | Search and filter emails | `after?`, `before?`, `from?`, `subject?`, `unread_only?`, `has_attachment?`, `folder?`, `limit?` |
 | `list_starred_emails` | Starred emails across all folders | — |
 | `fetch_email_content` | Full email content by id | `id`, `mailbox?` |
 | `fetch_email_attachment` | Download an attachment | `id`, `attachment_id`, `mailbox?` |

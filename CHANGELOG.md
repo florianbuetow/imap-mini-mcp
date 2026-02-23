@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This repository does not currently use release tags, so entries are grouped by date and major update scope.
 
+## 2026-02-23
+
+### Changed
+- Replaced 12 email listing tools with a single `find_emails` tool
+  - Supports date range (`after`, `before`) with relative time ("2h", "7d") and ISO dates
+  - Supports sender (`from`) and subject (`subject`) substring filtering
+  - Supports `unread_only` and `has_attachment` boolean filters
+  - Supports `folder` (default "INBOX") and `limit` for result count
+
+### Removed
+- `list_emails_24h`, `list_emails_7days`, `list_emails_month`, `list_emails_quarter`, `list_emails_year`, `list_emails_all`
+- `list_emails_n_hours`, `list_emails_n_minutes`
+- `list_inbox_messages`, `list_n_recent_emails`
+- `list_emails_from_domain`, `list_emails_from_sender`
+
 ## 2026-02-14
 
 ### Added
