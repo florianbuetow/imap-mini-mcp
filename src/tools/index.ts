@@ -8,15 +8,8 @@
 
 import type { ImapClient } from "../imap/index.js";
 import {
-  listEmails,
-  listEmailsFromDomain,
-  listEmailsFromSender,
-  listInboxMessages,
   fetchEmailContent,
   fetchEmailAttachment,
-  daysAgo,
-  hoursAgo,
-  minutesAgo,
   listFolders,
   createFolder,
   moveEmail,
@@ -75,19 +68,12 @@ function errorResult(message: string): ToolResult {
 }
 
 // ---------------------------------------------------------------------------
-// List email tools (generated from range config)
+// Shared schema and description helpers
 // ---------------------------------------------------------------------------
 
 const LIST_DESCRIPTION_SUFFIX =
   "Returns an array of {id, subject, from, date} objects sorted newest-first. " +
   "The id is a globally unique identifier — use it with fetch_email_content to read the full email.";
-
-const MAILBOX_SCHEMA = {
-  mailbox: {
-    type: "string",
-    description: 'Mailbox to list from. Default: "INBOX".',
-  },
-};
 
 const MAILBOX_HINT_SCHEMA = {
   mailbox: {
@@ -96,33 +82,6 @@ const MAILBOX_HINT_SCHEMA = {
       "Optional folder hint for faster lookup. If omitted, searches all folders.",
   },
 };
-
-function createListTool(
-  name: string,
-  days: number | undefined,
-  rangeLabel: string
-): ToolRegistration {
-  const isAll = days === undefined;
-  return {
-    name,
-    description: isAll
-      ? "List ALL emails in the mailbox (no date filter). " +
-        "Warning: this may return a very large number of results. " +
-        LIST_DESCRIPTION_SUFFIX
-      : `List all emails received in the ${rangeLabel}. ` +
-        LIST_DESCRIPTION_SUFFIX,
-    inputSchema: {
-      type: "object",
-      properties: { ...MAILBOX_SCHEMA },
-    },
-    handler: async (imapClient, args) => {
-      const since = days !== undefined ? daysAgo(days) : undefined;
-      const mailbox = (args.mailbox as string) || "INBOX";
-      const emails = await listEmails(imapClient, since, mailbox);
-      return jsonResult({ count: emails.length, emails });
-    },
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Tool registry
@@ -202,165 +161,6 @@ const registry: ToolRegistration[] = [
       }
 
       const emails = await findEmails(imapClient, opts);
-      return jsonResult({ count: emails.length, emails });
-    },
-  },
-
-  createListTool("list_emails_24h", 1, "last 24 hours"),
-  createListTool("list_emails_7days", 7, "last 7 days"),
-  createListTool("list_emails_month", 30, "last 30 days"),
-  createListTool("list_emails_quarter", 90, "last 90 days"),
-  createListTool("list_emails_year", 365, "last 365 days"),
-  createListTool("list_emails_all", undefined, ""),
-
-  {
-    name: "list_inbox_messages",
-    description:
-      "List the most recent N messages in the inbox. " +
-      LIST_DESCRIPTION_SUFFIX,
-    inputSchema: {
-      type: "object",
-      properties: {
-        n: {
-          type: "number",
-          description: "Number of recent messages to return.",
-        },
-      },
-      required: ["n"],
-    },
-    handler: async (imapClient, args) => {
-      const n = args.n as number;
-      if (!n || n < 1) return errorResult("Error: n must be a positive number.");
-      const emails = await listInboxMessages(imapClient, n);
-      return jsonResult({ count: emails.length, emails });
-    },
-  },
-
-  {
-    name: "list_emails_n_hours",
-    description:
-      "List all emails received in the last N hours. " +
-      LIST_DESCRIPTION_SUFFIX,
-    inputSchema: {
-      type: "object",
-      properties: {
-        hours: {
-          type: "number",
-          description: "Number of hours to look back.",
-        },
-      },
-      required: ["hours"],
-    },
-    handler: async (imapClient, args) => {
-      const hours = args.hours as number;
-      if (!hours || hours < 1)
-        return errorResult("Error: hours must be a positive number.");
-      const since = hoursAgo(hours);
-      const emails = await listEmails(imapClient, since, "INBOX");
-      return jsonResult({ count: emails.length, emails });
-    },
-  },
-
-  {
-    name: "list_emails_n_minutes",
-    description:
-      "List all emails received in the last N minutes. " +
-      LIST_DESCRIPTION_SUFFIX,
-    inputSchema: {
-      type: "object",
-      properties: {
-        minutes: {
-          type: "number",
-          description: "Number of minutes to look back.",
-        },
-      },
-      required: ["minutes"],
-    },
-    handler: async (imapClient, args) => {
-      const minutes = args.minutes as number;
-      if (!minutes || minutes < 1)
-        return errorResult("Error: minutes must be a positive number.");
-      const since = minutesAgo(minutes);
-      const emails = await listEmails(imapClient, since, "INBOX");
-      return jsonResult({ count: emails.length, emails });
-    },
-  },
-
-  {
-    name: "list_n_recent_emails",
-    description:
-      "List the N most recent emails from the inbox. " +
-      LIST_DESCRIPTION_SUFFIX,
-    inputSchema: {
-      type: "object",
-      properties: {
-        n: {
-          type: "number",
-          description: "Number of recent emails to return.",
-        },
-      },
-      required: ["n"],
-    },
-    handler: async (imapClient, args) => {
-      const n = args.n as number;
-      if (!n || n < 1) return errorResult("Error: n must be a positive number.");
-      const emails = await listInboxMessages(imapClient, n);
-      return jsonResult({ count: emails.length, emails });
-    },
-  },
-
-  {
-    name: "list_emails_from_domain",
-    description:
-      "List all emails from a specific domain (e.g. \"you.com\" finds all emails from @you.com senders). " +
-      LIST_DESCRIPTION_SUFFIX,
-    inputSchema: {
-      type: "object",
-      properties: {
-        domain: {
-          type: "string",
-          description:
-            'The domain to search for (e.g. "example.com"). Do not include the @ sign.',
-        },
-        ...MAILBOX_SCHEMA,
-      },
-      required: ["domain"],
-    },
-    handler: async (imapClient, args) => {
-      const domain = args.domain as string;
-      const mailbox = (args.mailbox as string) || "INBOX";
-
-      if (!domain) return errorResult("Error: domain is required.");
-
-      const emails = await listEmailsFromDomain(imapClient, domain, mailbox);
-      return jsonResult({ count: emails.length, emails });
-    },
-  },
-
-  {
-    name: "list_emails_from_sender",
-    description:
-      "List all emails from a specific sender email address (e.g. \"alice@example.com\"). " +
-      LIST_DESCRIPTION_SUFFIX,
-    inputSchema: {
-      type: "object",
-      properties: {
-        sender: {
-          type: "string",
-          description:
-            'The sender email address to search for (e.g. "alice@example.com").',
-        },
-        ...MAILBOX_SCHEMA,
-      },
-      required: ["sender"],
-    },
-    handler: async (imapClient, args) => {
-      const sender = args.sender as string;
-      const mailbox = (args.mailbox as string) || "INBOX";
-
-      if (!sender) return errorResult("Error: sender is required.");
-
-      const emails = await listEmailsFromSender(imapClient, sender, mailbox);
       return jsonResult({ count: emails.length, emails });
     },
   },

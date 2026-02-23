@@ -12,10 +12,6 @@ vi.mock("../imap/index.js", async () => {
   );
   return {
     ...actual,
-    listEmails: vi.fn(),
-    listEmailsFromDomain: vi.fn(),
-    listEmailsFromSender: vi.fn(),
-    listInboxMessages: vi.fn(),
     fetchEmailContent: vi.fn(),
     fetchEmailAttachment: vi.fn(),
     listFolders: vi.fn(),
@@ -36,10 +32,6 @@ vi.mock("../imap/index.js", async () => {
 });
 
 import {
-  listEmails,
-  listEmailsFromDomain,
-  listEmailsFromSender,
-  listInboxMessages,
   fetchEmailContent,
   fetchEmailAttachment,
   listFolders,
@@ -58,10 +50,6 @@ import {
   findEmails,
 } from "../imap/index.js";
 
-const mockListEmails = vi.mocked(listEmails);
-const mockListEmailsFromDomain = vi.mocked(listEmailsFromDomain);
-const mockListEmailsFromSender = vi.mocked(listEmailsFromSender);
-const mockListInboxMessages = vi.mocked(listInboxMessages);
 const mockFetchContent = vi.mocked(fetchEmailContent);
 const mockFetchAttachment = vi.mocked(fetchEmailAttachment);
 const mockListFolders = vi.mocked(listFolders);
@@ -87,26 +75,14 @@ const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
 // ---------------------------------------------------------------------------
 
 describe("tool definitions", () => {
-  it("exposes exactly 28 tools", () => {
-    expect(tools).toHaveLength(28);
+  it("exposes exactly 16 tools", () => {
+    expect(tools).toHaveLength(16);
   });
 
   it("has the expected tool names", () => {
     const names = tools.map((t) => t.name);
     expect(names).toEqual([
       "find_emails",
-      "list_emails_24h",
-      "list_emails_7days",
-      "list_emails_month",
-      "list_emails_quarter",
-      "list_emails_year",
-      "list_emails_all",
-      "list_inbox_messages",
-      "list_emails_n_hours",
-      "list_emails_n_minutes",
-      "list_n_recent_emails",
-      "list_emails_from_domain",
-      "list_emails_from_sender",
       "fetch_email_content",
       "fetch_email_attachment",
       "list_folders",
@@ -125,44 +101,6 @@ describe("tool definitions", () => {
     ]);
   });
 
-  it("fixed-range list tools have optional mailbox parameter", () => {
-    const fixedRangeTools = tools.filter(
-      (t) =>
-        t.name.startsWith("list_emails_") &&
-        !t.name.includes("from_domain") &&
-        !t.name.includes("from_sender") &&
-        !t.name.includes("n_hours") &&
-        !t.name.includes("n_minutes")
-    );
-    for (const tool of fixedRangeTools) {
-      expect(tool.inputSchema.properties).toHaveProperty("mailbox");
-    }
-  });
-
-  it("fixed-range list tools have no required fields", () => {
-    const fixedRangeTools = tools.filter(
-      (t) =>
-        t.name.startsWith("list_emails_") &&
-        !t.name.includes("from_domain") &&
-        !t.name.includes("from_sender") &&
-        !t.name.includes("n_hours") &&
-        !t.name.includes("n_minutes")
-    );
-    for (const tool of fixedRangeTools) {
-      expect((tool.inputSchema as any).required).toBeUndefined();
-    }
-  });
-
-  it("list_emails_from_domain requires domain", () => {
-    const tool = tools.find((t) => t.name === "list_emails_from_domain")!;
-    expect(tool.inputSchema.required).toContain("domain");
-  });
-
-  it("list_emails_from_sender requires sender", () => {
-    const tool = tools.find((t) => t.name === "list_emails_from_sender")!;
-    expect(tool.inputSchema.required).toContain("sender");
-  });
-
   it("fetch_email_content requires id", () => {
     const tool = tools.find((t) => t.name === "fetch_email_content")!;
     expect(tool.inputSchema.required).toContain("id");
@@ -172,304 +110,6 @@ describe("tool definitions", () => {
     const tool = tools.find((t) => t.name === "fetch_email_attachment")!;
     expect(tool.inputSchema.required).toContain("id");
     expect(tool.inputSchema.required).toContain("attachment_id");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleToolCall — list tools
-// ---------------------------------------------------------------------------
-
-describe("handleToolCall — list tools", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("list_emails_7days calls listEmails with ~7 days ago", async () => {
-    mockListEmails.mockResolvedValue([]);
-    const result = await handleToolCall(mockImapClient, "list_emails_7days", {});
-
-    expect(mockListEmails).toHaveBeenCalledOnce();
-    const [client, since, mailbox] = mockListEmails.mock.calls[0];
-    expect(since).toBeInstanceOf(Date);
-    // Should be roughly 7 days ago
-    const diffDays =
-      (Date.now() - since!.getTime()) / (1000 * 60 * 60 * 24);
-    expect(diffDays).toBeGreaterThanOrEqual(7);
-    expect(diffDays).toBeLessThanOrEqual(8);
-    expect(mailbox).toBe("INBOX");
-  });
-
-  it("list_emails_month calls listEmails with ~30 days ago", async () => {
-    mockListEmails.mockResolvedValue([]);
-    await handleToolCall(mockImapClient, "list_emails_month", {});
-
-    const [, since] = mockListEmails.mock.calls[0];
-    const diffDays =
-      (Date.now() - since!.getTime()) / (1000 * 60 * 60 * 24);
-    expect(diffDays).toBeGreaterThanOrEqual(30);
-    expect(diffDays).toBeLessThanOrEqual(31);
-  });
-
-  it("list_emails_all calls listEmails with undefined since", async () => {
-    mockListEmails.mockResolvedValue([]);
-    await handleToolCall(mockImapClient, "list_emails_all", {});
-
-    const [, since] = mockListEmails.mock.calls[0];
-    expect(since).toBeUndefined();
-  });
-
-  it("passes custom mailbox parameter", async () => {
-    mockListEmails.mockResolvedValue([]);
-    await handleToolCall(mockImapClient, "list_emails_7days", {
-      mailbox: "Sent",
-    });
-
-    const [, , mailbox] = mockListEmails.mock.calls[0];
-    expect(mailbox).toBe("Sent");
-  });
-
-  it("returns count and emails in JSON response", async () => {
-    mockListEmails.mockResolvedValue([
-      {
-        id: TEST_ID,
-        subject: "Test",
-        from: "a@b.com",
-        date: "2026-02-10T00:00:00.000Z",
-      },
-    ]);
-
-    const result = await handleToolCall(
-      mockImapClient,
-      "list_emails_7days",
-      {}
-    );
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(1);
-    expect(parsed.emails[0].id).toBe(TEST_ID);
-    expect(parsed.emails[0].subject).toBe("Test");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleToolCall — list_emails_n_hours
-// ---------------------------------------------------------------------------
-
-describe("handleToolCall — list_emails_n_hours", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("requires hours parameter", () => {
-    const tool = tools.find((t) => t.name === "list_emails_n_hours")!;
-    expect(tool.inputSchema.required).toContain("hours");
-  });
-
-  it("returns error when hours is missing or invalid", async () => {
-    const result = await handleToolCall(mockImapClient, "list_emails_n_hours", {});
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("hours must be a positive number");
-  });
-
-  it("calls listEmails with a since date ~N hours ago", async () => {
-    mockListEmails.mockResolvedValue([]);
-    const before = Date.now();
-    await handleToolCall(mockImapClient, "list_emails_n_hours", { hours: 6 });
-
-    expect(mockListEmails).toHaveBeenCalledOnce();
-    const [, since, mailbox] = mockListEmails.mock.calls[0];
-    expect(since).toBeInstanceOf(Date);
-    const diffHours = (before - since!.getTime()) / (1000 * 60 * 60);
-    expect(diffHours).toBeGreaterThanOrEqual(5.99);
-    expect(diffHours).toBeLessThanOrEqual(6.01);
-    expect(mailbox).toBe("INBOX");
-  });
-
-  it("returns count and emails", async () => {
-    mockListEmails.mockResolvedValue([
-      { id: TEST_ID, subject: "Recent", from: "a@b.com", date: "2026-02-14T10:00:00.000Z" },
-    ]);
-
-    const result = await handleToolCall(mockImapClient, "list_emails_n_hours", { hours: 2 });
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(1);
-    expect(parsed.emails[0].subject).toBe("Recent");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleToolCall — list_emails_n_minutes
-// ---------------------------------------------------------------------------
-
-describe("handleToolCall — list_emails_n_minutes", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("requires minutes parameter", () => {
-    const tool = tools.find((t) => t.name === "list_emails_n_minutes")!;
-    expect(tool.inputSchema.required).toContain("minutes");
-  });
-
-  it("returns error when minutes is missing or invalid", async () => {
-    const result = await handleToolCall(mockImapClient, "list_emails_n_minutes", {});
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("minutes must be a positive number");
-  });
-
-  it("calls listEmails with a since date ~N minutes ago", async () => {
-    mockListEmails.mockResolvedValue([]);
-    const before = Date.now();
-    await handleToolCall(mockImapClient, "list_emails_n_minutes", { minutes: 30 });
-
-    expect(mockListEmails).toHaveBeenCalledOnce();
-    const [, since, mailbox] = mockListEmails.mock.calls[0];
-    expect(since).toBeInstanceOf(Date);
-    const diffMinutes = (before - since!.getTime()) / (1000 * 60);
-    expect(diffMinutes).toBeGreaterThanOrEqual(29.99);
-    expect(diffMinutes).toBeLessThanOrEqual(30.01);
-    expect(mailbox).toBe("INBOX");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleToolCall — list_n_recent_emails
-// ---------------------------------------------------------------------------
-
-describe("handleToolCall — list_n_recent_emails", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("requires n parameter", () => {
-    const tool = tools.find((t) => t.name === "list_n_recent_emails")!;
-    expect(tool.inputSchema.required).toContain("n");
-  });
-
-  it("returns error when n is missing or invalid", async () => {
-    const result = await handleToolCall(mockImapClient, "list_n_recent_emails", {});
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("n must be a positive number");
-  });
-
-  it("calls listInboxMessages with correct count", async () => {
-    mockListInboxMessages.mockResolvedValue([
-      { id: TEST_ID, subject: "Latest", from: "a@b.com", date: "2026-02-14T10:00:00.000Z" },
-    ]);
-
-    const result = await handleToolCall(mockImapClient, "list_n_recent_emails", { n: 10 });
-
-    expect(mockListInboxMessages).toHaveBeenCalledWith(mockImapClient, 10);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(1);
-    expect(parsed.emails[0].subject).toBe("Latest");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleToolCall — list_emails_from_domain
-// ---------------------------------------------------------------------------
-
-describe("handleToolCall — list_emails_from_domain", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("returns error when domain is missing", async () => {
-    const result = await handleToolCall(
-      mockImapClient,
-      "list_emails_from_domain",
-      {}
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("domain is required");
-  });
-
-  it("calls listEmailsFromDomain with correct arguments", async () => {
-    mockListEmailsFromDomain.mockResolvedValue([
-      {
-        id: TEST_ID,
-        subject: "Hello",
-        from: "alice@you.com",
-        date: "2026-02-10T00:00:00.000Z",
-      },
-    ]);
-
-    const result = await handleToolCall(
-      mockImapClient,
-      "list_emails_from_domain",
-      { domain: "you.com" }
-    );
-
-    expect(mockListEmailsFromDomain).toHaveBeenCalledWith(
-      mockImapClient,
-      "you.com",
-      "INBOX"
-    );
-
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(1);
-    expect(parsed.emails[0].from).toBe("alice@you.com");
-  });
-
-  it("passes custom mailbox parameter", async () => {
-    mockListEmailsFromDomain.mockResolvedValue([]);
-    await handleToolCall(mockImapClient, "list_emails_from_domain", {
-      domain: "example.com",
-      mailbox: "Sent",
-    });
-
-    expect(mockListEmailsFromDomain).toHaveBeenCalledWith(
-      mockImapClient,
-      "example.com",
-      "Sent"
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleToolCall — list_emails_from_sender
-// ---------------------------------------------------------------------------
-
-describe("handleToolCall — list_emails_from_sender", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("returns error when sender is missing", async () => {
-    const result = await handleToolCall(
-      mockImapClient,
-      "list_emails_from_sender",
-      {}
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("sender is required");
-  });
-
-  it("calls listEmailsFromSender with correct arguments", async () => {
-    mockListEmailsFromSender.mockResolvedValue([
-      {
-        id: TEST_ID,
-        subject: "Hello",
-        from: "alice@example.com",
-        date: "2026-02-10T00:00:00.000Z",
-      },
-    ]);
-
-    const result = await handleToolCall(
-      mockImapClient,
-      "list_emails_from_sender",
-      { sender: "alice@example.com" }
-    );
-
-    expect(mockListEmailsFromSender).toHaveBeenCalledWith(
-      mockImapClient,
-      "alice@example.com",
-      "INBOX"
-    );
-
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(1);
-    expect(parsed.emails[0].from).toBe("alice@example.com");
   });
 });
 

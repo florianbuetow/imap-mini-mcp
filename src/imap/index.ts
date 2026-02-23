@@ -3,15 +3,8 @@ export {
   findEmails,
   parseTimeParam,
   hasAttachmentPart,
-  listEmails,
-  listEmailsFromDomain,
-  listEmailsFromSender,
-  listInboxMessages,
   fetchEmailContent,
   fetchEmailAttachment,
-  daysAgo,
-  hoursAgo,
-  minutesAgo,
   extractEmailAddress,
 } from "./search.js";
 export type { FindEmailsOptions } from "./search.js";
