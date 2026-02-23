@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { daysAgo, hoursAgo, minutesAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment, parseTimeParam, hasAttachmentPart } from "./search.js";
+import { daysAgo, hoursAgo, minutesAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment, parseTimeParam, hasAttachmentPart, findEmails } from "./search.js";
 import type { ImapClient } from "./client.js";
 import type { MessageStructureObject } from "imapflow";
 
@@ -762,5 +762,152 @@ describe("hasAttachmentPart", () => {
 
   it("returns false for null/undefined input", () => {
     expect(hasAttachmentPart(undefined as any)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findEmails
+// ---------------------------------------------------------------------------
+
+describe("findEmails", () => {
+  it("returns all emails when no filters provided", async () => {
+    const { imapClient, mockClient } = createMockImapClient({
+      search: [100, 200],
+      fetchMessages: [
+        {
+          uid: 200,
+          envelope: {
+            subject: "Newer",
+            from: [{ address: "b@test.com" }],
+            date: new Date("2026-02-02"),
+            messageId: "<msg-200@test.com>",
+          },
+        },
+        {
+          uid: 100,
+          envelope: {
+            subject: "Older",
+            from: [{ address: "a@test.com" }],
+            date: new Date("2026-02-01"),
+            messageId: "<msg-100@test.com>",
+          },
+        },
+      ],
+    });
+
+    const result = await findEmails(imapClient, {});
+    expect(result).toHaveLength(2);
+    expect(result[0].subject).toBe("Newer");
+    expect(result[1].subject).toBe("Older");
+    expect(mockClient.search).toHaveBeenCalledWith({ all: true }, { uid: true });
+  });
+
+  it("passes after as since to IMAP search", async () => {
+    const { imapClient, mockClient } = createMockImapClient({ search: [] });
+    const after = new Date("2026-02-20");
+    await findEmails(imapClient, { after });
+    expect(mockClient.search).toHaveBeenCalledWith(
+      expect.objectContaining({ since: after }),
+      { uid: true }
+    );
+  });
+
+  it("passes before to IMAP search", async () => {
+    const { imapClient, mockClient } = createMockImapClient({ search: [] });
+    const before = new Date("2026-02-20");
+    await findEmails(imapClient, { before });
+    expect(mockClient.search).toHaveBeenCalledWith(
+      expect.objectContaining({ before }),
+      { uid: true }
+    );
+  });
+
+  it("passes from to IMAP search", async () => {
+    const { imapClient, mockClient } = createMockImapClient({ search: [] });
+    await findEmails(imapClient, { from: "@example.com" });
+    expect(mockClient.search).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "@example.com" }),
+      { uid: true }
+    );
+  });
+
+  it("passes subject to IMAP search", async () => {
+    const { imapClient, mockClient } = createMockImapClient({ search: [] });
+    await findEmails(imapClient, { subject: "invoice" });
+    expect(mockClient.search).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: "invoice" }),
+      { uid: true }
+    );
+  });
+
+  it("passes unseen for unreadOnly", async () => {
+    const { imapClient, mockClient } = createMockImapClient({ search: [] });
+    await findEmails(imapClient, { unreadOnly: true });
+    expect(mockClient.search).toHaveBeenCalledWith(
+      expect.objectContaining({ seen: false }),
+      { uid: true }
+    );
+  });
+
+  it("applies limit to results", async () => {
+    const { imapClient } = createMockImapClient({
+      search: [100, 200, 300],
+      fetchMessages: [
+        {
+          uid: 300,
+          envelope: {
+            subject: "Third",
+            from: [{ address: "c@test.com" }],
+            date: new Date("2026-02-03"),
+            messageId: "<msg-300@test.com>",
+          },
+        },
+        {
+          uid: 200,
+          envelope: {
+            subject: "Second",
+            from: [{ address: "b@test.com" }],
+            date: new Date("2026-02-02"),
+            messageId: "<msg-200@test.com>",
+          },
+        },
+      ],
+    });
+
+    const result = await findEmails(imapClient, { limit: 2 });
+    expect(result).toHaveLength(2);
+  });
+
+  it("uses INBOX as default folder", async () => {
+    const { imapClient } = createMockImapClient({ search: [] });
+    await findEmails(imapClient, {});
+    expect(imapClient.openMailbox).toHaveBeenCalledWith("INBOX");
+  });
+
+  it("uses custom folder when provided", async () => {
+    const { imapClient } = createMockImapClient({ search: [] });
+    await findEmails(imapClient, { folder: "Sent" });
+    expect(imapClient.openMailbox).toHaveBeenCalledWith("Sent");
+  });
+
+  it("combines multiple filters", async () => {
+    const { imapClient, mockClient } = createMockImapClient({ search: [] });
+    const after = new Date("2026-02-01");
+    await findEmails(imapClient, {
+      after,
+      from: "alice",
+      unreadOnly: true,
+    });
+    expect(mockClient.search).toHaveBeenCalledWith(
+      { since: after, from: "alice", seen: false },
+      { uid: true }
+    );
+  });
+
+  it("always releases the mailbox lock", async () => {
+    const { imapClient, mockLock, mockClient } = createMockImapClient({ search: [] });
+    mockClient.search.mockRejectedValueOnce(new Error("IMAP error"));
+    await expect(findEmails(imapClient, {})).rejects.toThrow("IMAP error");
+    expect(mockLock.release).toHaveBeenCalled();
   });
 });

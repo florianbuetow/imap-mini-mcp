@@ -84,6 +84,117 @@ export function hasAttachmentPart(structure: MessageStructureObject): boolean {
 }
 
 /**
+ * Options for the unified findEmails function.
+ * All fields are optional — an empty object returns all emails from INBOX.
+ */
+export interface FindEmailsOptions {
+  after?: Date;
+  before?: Date;
+  from?: string;
+  subject?: string;
+  unreadOnly?: boolean;
+  hasAttachment?: boolean;
+  folder?: string;
+  limit?: number;
+}
+
+/**
+ * Unified email search. Builds an IMAP SEARCH query from the provided
+ * filters, fetches matching envelopes, and optionally filters by attachment
+ * presence via BODYSTRUCTURE.
+ *
+ * Results are sorted newest-first. If `limit` is set, only the first N
+ * results are returned.
+ */
+export async function findEmails(
+  imapClient: ImapClient,
+  opts: FindEmailsOptions
+): Promise<EmailEntry[]> {
+  const folder = opts.folder || "INBOX";
+  const lock = await imapClient.openMailbox(folder);
+  try {
+    const client = imapClient.getClient();
+
+    // Build IMAP search query — multiple fields are AND-ed by ImapFlow
+    const query: SearchObject = {};
+    let hasFilter = false;
+
+    if (opts.after) {
+      query.since = opts.after;
+      hasFilter = true;
+    }
+    if (opts.before) {
+      query.before = opts.before;
+      hasFilter = true;
+    }
+    if (opts.from) {
+      query.from = opts.from;
+      hasFilter = true;
+    }
+    if (opts.subject) {
+      query.subject = opts.subject;
+      hasFilter = true;
+    }
+    if (opts.unreadOnly) {
+      query.seen = false;
+      hasFilter = true;
+    }
+
+    if (!hasFilter) {
+      query.all = true;
+    }
+
+    const uids = await client.search(query, { uid: true });
+    if (!uids || uids.length === 0) return [];
+
+    // Sort newest-first by UID (higher UID = newer), apply limit early
+    // to reduce fetch volume when not filtering by attachment
+    let sortedUids = uids.sort((a, b) => b - a);
+
+    if (opts.limit && !opts.hasAttachment) {
+      sortedUids = sortedUids.slice(0, opts.limit);
+    }
+
+    // Determine what to fetch
+    const fetchFields: any = { uid: true, envelope: true };
+    if (opts.hasAttachment) {
+      fetchFields.bodyStructure = true;
+    }
+
+    const results: EmailEntry[] = [];
+    for await (const msg of client.fetch(sortedUids.join(","), fetchFields, { uid: true })) {
+      // Filter by attachment if requested
+      if (opts.hasAttachment && !hasAttachmentPart(msg.bodyStructure as MessageStructureObject)) {
+        continue;
+      }
+
+      results.push({
+        id: buildCompositeId(msg.envelope?.date || new Date(0), msg.envelope?.messageId || ""),
+        subject: msg.envelope?.subject || "(no subject)",
+        from: extractEmailAddress(msg.envelope?.from),
+        date: msg.envelope?.date?.toISOString() || "",
+      });
+    }
+
+    // Sort by envelope date (more accurate than UID order)
+    results.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return db - da;
+    });
+
+    // Apply limit after attachment filtering + date sort
+    if (opts.limit) {
+      return results.slice(0, opts.limit);
+    }
+
+    return results;
+  } finally {
+    lock.release();
+  }
+}
+
+/**
  * List emails received since a given date.
  * If `since` is undefined, lists ALL emails (no date filter).
  *
