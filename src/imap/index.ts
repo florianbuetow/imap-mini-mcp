@@ -1,5 +1,8 @@
 export { ImapClient, createClientFromEnv } from "./client.js";
 export {
+  findEmails,
+  parseTimeParam,
+  hasAttachmentPart,
   listEmails,
   listEmailsFromDomain,
   listEmailsFromSender,
@@ -11,6 +14,7 @@ export {
   minutesAgo,
   extractEmailAddress,
 } from "./search.js";
+export type { FindEmailsOptions } from "./search.js";
 export { listFolders, createFolder, moveEmail, folderExists, bulkMoveBySender } from "./folders.js";
 export { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails } from "./flags.js";
 export type { StarredFolderGroup } from "./flags.js";

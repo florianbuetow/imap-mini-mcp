@@ -31,6 +31,7 @@ vi.mock("../imap/index.js", async () => {
     findDraftsFolder: vi.fn(),
     resolveEmailId: vi.fn(),
     resolveInMailbox: vi.fn(),
+    findEmails: vi.fn(),
   };
 });
 
@@ -54,6 +55,7 @@ import {
   findDraftsFolder,
   resolveEmailId,
   resolveInMailbox,
+  findEmails,
 } from "../imap/index.js";
 
 const mockListEmails = vi.mocked(listEmails);
@@ -75,6 +77,7 @@ const mockListStarredEmails = vi.mocked(listStarredEmails);
 const mockFindDraftsFolder = vi.mocked(findDraftsFolder);
 const mockResolveEmailId = vi.mocked(resolveEmailId);
 const mockResolveInMailbox = vi.mocked(resolveInMailbox);
+const mockFindEmails = vi.mocked(findEmails);
 const mockImapClient = {} as ImapClient;
 
 const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
@@ -84,13 +87,14 @@ const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
 // ---------------------------------------------------------------------------
 
 describe("tool definitions", () => {
-  it("exposes exactly 27 tools", () => {
-    expect(tools).toHaveLength(27);
+  it("exposes exactly 28 tools", () => {
+    expect(tools).toHaveLength(28);
   });
 
   it("has the expected tool names", () => {
     const names = tools.map((t) => t.name);
     expect(names).toEqual([
+      "find_emails",
       "list_emails_24h",
       "list_emails_7days",
       "list_emails_month",
@@ -1247,6 +1251,83 @@ describe("handleToolCall — bulk_move_by_sender_domain", () => {
     expect(parsed.source_folder).toBe("INBOX");
     expect(parsed.destination_folder).toBe("Promotions");
     expect(parsed.domain).toBe("example.com");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — find_emails
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — find_emails", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls findEmails with folder INBOX when no params given", async () => {
+    mockFindEmails.mockResolvedValue([]);
+    await handleToolCall(mockImapClient, "find_emails", {});
+    expect(mockFindEmails).toHaveBeenCalledWith(mockImapClient, {
+      folder: "INBOX",
+    });
+  });
+
+  it("parses relative after param", async () => {
+    mockFindEmails.mockResolvedValue([]);
+    const before = Date.now();
+    await handleToolCall(mockImapClient, "find_emails", { after: "2h" });
+
+    const opts = mockFindEmails.mock.calls[0][1];
+    expect(opts.after).toBeInstanceOf(Date);
+    const diffH = (before - opts.after!.getTime()) / (1000 * 60 * 60);
+    expect(diffH).toBeGreaterThanOrEqual(1.99);
+    expect(diffH).toBeLessThanOrEqual(2.01);
+  });
+
+  it("parses ISO before param", async () => {
+    mockFindEmails.mockResolvedValue([]);
+    await handleToolCall(mockImapClient, "find_emails", {
+      before: "2026-02-20T00:00:00Z",
+    });
+    const opts = mockFindEmails.mock.calls[0][1];
+    expect(opts.before).toEqual(new Date("2026-02-20T00:00:00Z"));
+  });
+
+  it("passes from, subject, unread_only, has_attachment, limit", async () => {
+    mockFindEmails.mockResolvedValue([]);
+    await handleToolCall(mockImapClient, "find_emails", {
+      from: "@stripe.com",
+      subject: "invoice",
+      unread_only: true,
+      has_attachment: true,
+      folder: "Sent",
+      limit: 5,
+    });
+    expect(mockFindEmails).toHaveBeenCalledWith(mockImapClient, {
+      from: "@stripe.com",
+      subject: "invoice",
+      unreadOnly: true,
+      hasAttachment: true,
+      folder: "Sent",
+      limit: 5,
+    });
+  });
+
+  it("returns error for invalid after value", async () => {
+    const result = await handleToolCall(mockImapClient, "find_emails", {
+      after: "xyz",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Invalid time parameter");
+  });
+
+  it("returns count and emails", async () => {
+    mockFindEmails.mockResolvedValue([
+      { id: TEST_ID, subject: "Hello", from: "a@b.com", date: "2026-02-20T00:00:00.000Z" },
+    ]);
+    const result = await handleToolCall(mockImapClient, "find_emails", { after: "7d" });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.count).toBe(1);
+    expect(parsed.emails[0].subject).toBe("Hello");
   });
 });
 

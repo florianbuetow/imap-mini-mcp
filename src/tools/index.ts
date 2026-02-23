@@ -33,6 +33,8 @@ import {
   resolveEmailId,
   resolveInMailbox,
   parseCompositeId,
+  findEmails,
+  parseTimeParam,
 } from "../imap/index.js";
 
 // ---------------------------------------------------------------------------
@@ -127,6 +129,83 @@ function createListTool(
 // ---------------------------------------------------------------------------
 
 const registry: ToolRegistration[] = [
+  {
+    name: "find_emails",
+    description:
+      "Search and filter emails. All parameters are optional — calling with no parameters " +
+      "returns all emails from INBOX. " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: {
+        after: {
+          type: "string",
+          description:
+            'Only emails after this time. Relative ("30m", "2h", "7d") or ISO date.',
+        },
+        before: {
+          type: "string",
+          description:
+            'Only emails before this time. Relative ("30m", "2h", "7d") or ISO date.',
+        },
+        from: {
+          type: "string",
+          description:
+            'Substring match on sender address (e.g. "alice@example.com", "@stripe.com").',
+        },
+        subject: {
+          type: "string",
+          description: "Substring match on subject line.",
+        },
+        unread_only: {
+          type: "boolean",
+          description: "Only return unread emails. Default: false.",
+        },
+        has_attachment: {
+          type: "boolean",
+          description: "Only return emails with attachments. Default: false.",
+        },
+        folder: {
+          type: "string",
+          description: 'Folder to search. Default: "INBOX".',
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of results to return (newest first).",
+        },
+      },
+    },
+    handler: async (imapClient, args) => {
+      const opts: any = {
+        folder: (args.folder as string) || "INBOX",
+      };
+
+      try {
+        if (args.after) {
+          opts.after = parseTimeParam(args.after as string);
+        }
+        if (args.before) {
+          opts.before = parseTimeParam(args.before as string);
+        }
+      } catch (err: any) {
+        return errorResult(err.message);
+      }
+
+      if (args.from) opts.from = args.from as string;
+      if (args.subject) opts.subject = args.subject as string;
+      if (args.unread_only) opts.unreadOnly = true;
+      if (args.has_attachment) opts.hasAttachment = true;
+      if (args.limit) {
+        const limit = args.limit as number;
+        if (limit < 1) return errorResult("Error: limit must be a positive number.");
+        opts.limit = limit;
+      }
+
+      const emails = await findEmails(imapClient, opts);
+      return jsonResult({ count: emails.length, emails });
+    },
+  },
+
   createListTool("list_emails_24h", 1, "last 24 hours"),
   createListTool("list_emails_7days", 7, "last 7 days"),
   createListTool("list_emails_month", 30, "last 30 days"),
