@@ -5,6 +5,34 @@ import type { ImapClient } from "./client.js";
 import { buildCompositeId } from "./resolve.js";
 
 /**
+ * Parse a time parameter that can be either:
+ * - Relative: "30m" (minutes), "2h" (hours), "7d" (days)
+ * - Absolute: any ISO 8601 date or datetime string
+ *
+ * Returns a Date object.
+ */
+export function parseTimeParam(value: string): Date {
+  const match = value.match(/^(\d+)([mhd])$/);
+  if (match) {
+    const n = parseInt(match[1], 10);
+    const unit = match[2];
+    const ms =
+      unit === "m" ? n * 60 * 1000 :
+      unit === "h" ? n * 60 * 60 * 1000 :
+      /* d */        n * 24 * 60 * 60 * 1000;
+    return new Date(Date.now() - ms);
+  }
+
+  const date = new Date(value);
+  if (isNaN(date.getTime())) {
+    throw new Error(
+      `Invalid time parameter "${value}". Use relative format (e.g. "30m", "2h", "7d") or ISO date.`
+    );
+  }
+  return date;
+}
+
+/**
  * Extract a clean email address from an IMAP envelope address object.
  * Returns just the address part (e.g. "alice@example.com"), not the display name.
  */

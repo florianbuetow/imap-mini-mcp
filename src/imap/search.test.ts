@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { daysAgo, hoursAgo, minutesAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment } from "./search.js";
+import { daysAgo, hoursAgo, minutesAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment, parseTimeParam } from "./search.js";
 import type { ImapClient } from "./client.js";
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,52 @@ describe("minutesAgo", () => {
     const after = Date.now();
     expect(result.getTime()).toBeGreaterThanOrEqual(before);
     expect(result.getTime()).toBeLessThanOrEqual(after);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseTimeParam
+// ---------------------------------------------------------------------------
+
+describe("parseTimeParam", () => {
+  it("parses minutes shorthand '30m'", () => {
+    const before = Date.now();
+    const result = parseTimeParam("30m");
+    const diffMin = (before - result.getTime()) / (1000 * 60);
+    expect(diffMin).toBeGreaterThanOrEqual(29.99);
+    expect(diffMin).toBeLessThanOrEqual(30.01);
+  });
+
+  it("parses hours shorthand '2h'", () => {
+    const before = Date.now();
+    const result = parseTimeParam("2h");
+    const diffHours = (before - result.getTime()) / (1000 * 60 * 60);
+    expect(diffHours).toBeGreaterThanOrEqual(1.99);
+    expect(diffHours).toBeLessThanOrEqual(2.01);
+  });
+
+  it("parses days shorthand '7d'", () => {
+    const before = Date.now();
+    const result = parseTimeParam("7d");
+    const diffDays = (before - result.getTime()) / (1000 * 60 * 60 * 24);
+    expect(diffDays).toBeGreaterThanOrEqual(6.99);
+    expect(diffDays).toBeLessThanOrEqual(7.01);
+  });
+
+  it("parses ISO date string", () => {
+    const result = parseTimeParam("2026-02-20");
+    expect(result.toISOString()).toContain("2026-02-20");
+  });
+
+  it("parses ISO datetime string", () => {
+    const result = parseTimeParam("2026-02-20T15:00:00Z");
+    expect(result.toISOString()).toBe("2026-02-20T15:00:00.000Z");
+  });
+
+  it("throws on invalid input", () => {
+    expect(() => parseTimeParam("abc")).toThrow();
+    expect(() => parseTimeParam("")).toThrow();
+    expect(() => parseTimeParam("5x")).toThrow();
   });
 });
 
