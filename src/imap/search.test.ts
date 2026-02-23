@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { daysAgo, hoursAgo, minutesAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment, parseTimeParam } from "./search.js";
+import { daysAgo, hoursAgo, minutesAgo, extractEmailAddress, listEmails, listInboxMessages, listEmailsFromDomain, listEmailsFromSender, fetchEmailContent, fetchEmailAttachment, parseTimeParam, hasAttachmentPart } from "./search.js";
 import type { ImapClient } from "./client.js";
+import type { MessageStructureObject } from "imapflow";
 
 // ---------------------------------------------------------------------------
 // daysAgo
@@ -707,5 +708,59 @@ describe("fetchEmailAttachment", () => {
     );
     expect(decoded).toContain("name,value");
     expect(decoded).toContain("alice,42");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasAttachmentPart
+// ---------------------------------------------------------------------------
+
+describe("hasAttachmentPart", () => {
+  it("returns false for plain text message", () => {
+    const struct: MessageStructureObject = { type: "text/plain" };
+    expect(hasAttachmentPart(struct)).toBe(false);
+  });
+
+  it("returns true when disposition is 'attachment'", () => {
+    const struct: MessageStructureObject = {
+      type: "multipart/mixed",
+      childNodes: [
+        { type: "text/plain" },
+        { type: "application/pdf", disposition: "attachment" },
+      ],
+    };
+    expect(hasAttachmentPart(struct)).toBe(true);
+  });
+
+  it("returns true for nested attachment", () => {
+    const struct: MessageStructureObject = {
+      type: "multipart/mixed",
+      childNodes: [
+        {
+          type: "multipart/alternative",
+          childNodes: [
+            { type: "text/plain" },
+            { type: "text/html" },
+          ],
+        },
+        { type: "image/png", disposition: "attachment" },
+      ],
+    };
+    expect(hasAttachmentPart(struct)).toBe(true);
+  });
+
+  it("returns false when only inline images (no attachment disposition)", () => {
+    const struct: MessageStructureObject = {
+      type: "multipart/related",
+      childNodes: [
+        { type: "text/html" },
+        { type: "image/png", disposition: "inline" },
+      ],
+    };
+    expect(hasAttachmentPart(struct)).toBe(false);
+  });
+
+  it("returns false for null/undefined input", () => {
+    expect(hasAttachmentPart(undefined as any)).toBe(false);
   });
 });

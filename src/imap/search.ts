@@ -1,4 +1,4 @@
-import type { SearchObject } from "imapflow";
+import type { SearchObject, MessageStructureObject } from "imapflow";
 import { simpleParser } from "mailparser";
 import type { EmailEntry } from "./types.js";
 import type { ImapClient } from "./client.js";
@@ -68,6 +68,19 @@ export function hoursAgo(n: number): Date {
  */
 export function minutesAgo(n: number): Date {
   return new Date(Date.now() - n * 60 * 1000);
+}
+
+/**
+ * Recursively check if a BODYSTRUCTURE has any attachment parts.
+ * Looks for nodes with disposition "attachment".
+ */
+export function hasAttachmentPart(structure: MessageStructureObject): boolean {
+  if (!structure) return false;
+  if (structure.disposition?.toLowerCase() === "attachment") return true;
+  if (structure.childNodes) {
+    return structure.childNodes.some(hasAttachmentPart);
+  }
+  return false;
 }
 
 /**
