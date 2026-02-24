@@ -86,9 +86,36 @@ Or as MCP client config:
 
 Every email is identified by a composite **id** (`YYYY-MM-DDTHH:mm:ss.<Message-ID>`) that is globally unique and stable across folder moves. Use the `id` returned by `find_emails` to fetch content, download attachments, move emails, or create reply drafts. Action tools accept an optional `mailbox` hint for faster lookup; if omitted, all folders are searched.
 
+### `find_emails`
+
+Search and filter emails. All parameters are optional — calling with no parameters returns all emails from INBOX, sorted newest-first.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `after` | string | — | Only emails after this time. Relative (`"30m"`, `"2h"`, `"7d"`) or ISO date (`"2026-02-20"`) |
+| `before` | string | — | Only emails before this time. Same formats as `after` |
+| `from` | string | — | Substring match on sender address (e.g. `"alice@example.com"`, `"@stripe.com"`) |
+| `subject` | string | — | Substring match on subject line |
+| `unread_only` | boolean | `false` | Only return unread emails |
+| `has_attachment` | boolean | `false` | Only return emails with attachments |
+| `folder` | string | `"INBOX"` | Folder to search |
+| `limit` | number | — | Maximum number of results (newest first) |
+
+**Examples:**
+
+| Use case | Parameters |
+|---|---|
+| Last 24 hours | `{after: "24h"}` |
+| Last 7 days, max 10 | `{after: "7d", limit: 10}` |
+| Unread emails | `{unread_only: true}` |
+| From a domain | `{from: "@stripe.com"}` |
+| With attachments, last month | `{after: "30d", has_attachment: true}` |
+| Specific sender, in Sent folder | `{from: "alice@example.com", folder: "Sent"}` |
+
+### Other tools
+
 | Tool | Description | Key parameters |
 |---|---|---|
-| `find_emails` | Search and filter emails | `after?`, `before?`, `from?`, `subject?`, `unread_only?`, `has_attachment?`, `folder?`, `limit?` |
 | `list_starred_emails` | Starred emails across all folders | — |
 | `fetch_email_content` | Full email content by id | `id`, `mailbox?` |
 | `fetch_email_attachment` | Download an attachment | `id`, `attachment_id`, `mailbox?` |
