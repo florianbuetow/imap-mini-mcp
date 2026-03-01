@@ -116,7 +116,8 @@ Search and filter emails. All parameters are optional — calling with no parame
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `list_starred_emails` | Starred emails across all folders | — |
+| `list_starred_emails` | Starred emails across all folders (includes Apple Mail color flags) | — |
+| `list_emails_by_color` | Emails with an Apple Mail color flag, grouped by folder | `color?` (`red`/`orange`/`yellow`/`green`/`blue`/`purple`/`grey`) |
 | `fetch_email_content` | Full email content by id | `id`, `mailbox?` |
 | `fetch_email_attachment` | Download an attachment | `id`, `attachment_id`, `mailbox?` |
 | `list_folders` | List all folders | — |

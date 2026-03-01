@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This repository does not currently use release tags, so entries are grouped by date and major update scope.
 
+## 2026-03-01
+
+### Added
+- `list_emails_by_color` tool — list emails that have an Apple Mail color flag, optionally filtered by color (`red`, `orange`, `yellow`, `green`, `blue`, `purple`, `grey`). Returns emails with their `color` field, grouped by folder.
+
+### Changed
+- `list_starred_emails` now returns emails flagged via Apple Mail `$MailFlagBit*` keywords, even when `\Flagged` is not set
+- `unstar_email` now also removes `$MailFlagBit*` keywords in addition to `\Flagged` (best-effort)
+
 ## 2026-02-23
 
 ### Changed
