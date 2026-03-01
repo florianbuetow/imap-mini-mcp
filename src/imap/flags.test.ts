@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails } from "./flags.js";
+import { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails, listEmailsByColor } from "./flags.js";
 import type { ImapClient } from "./client.js";
 
 vi.mock("./folders.js", () => ({
@@ -69,6 +69,18 @@ describe("unstarEmail", () => {
       { uid: true }
     );
     expect(result).toEqual({ uid: 42, starred: false });
+  });
+
+  it("also removes macOS $MailFlagBit* keywords", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    await unstarEmail(imapClient, 42, "INBOX");
+
+    expect(mockClient.messageFlagsRemove).toHaveBeenCalledWith(
+      "42",
+      expect.arrayContaining(["$MailFlagBit0", "$MailFlagBit1", "$MailFlagBit2"]),
+      { uid: true }
+    );
   });
 
   it("releases lock even on error", async () => {
@@ -161,7 +173,12 @@ describe("listStarredEmails", () => {
     const result = await listStarredEmails(imapClient, "INBOX");
 
     expect(mockClient.search).toHaveBeenCalledWith(
-      { flagged: true },
+      expect.objectContaining({
+        or: expect.arrayContaining([
+          { flagged: true },
+          { keyword: "$MailFlagBit0" },
+        ]),
+      }),
       { uid: true }
     );
     expect(result).toHaveLength(2);
@@ -177,6 +194,48 @@ describe("listStarredEmails", () => {
     const result = await listStarredEmails(imapClient);
 
     expect(result).toEqual([]);
+  });
+
+  it("includes $MailFlagBit* keyword conditions in search query", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([]);
+
+    await listStarredEmails(imapClient, "INBOX");
+
+    expect(mockClient.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        or: expect.arrayContaining([
+          { keyword: "$MailFlagBit0" },
+          { keyword: "$MailFlagBit1" },
+          { keyword: "$MailFlagBit2" },
+        ]),
+      }),
+      { uid: true }
+    );
+  });
+
+  it("returns emails flagged via $MailFlagBit* even without \\Flagged", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([99]);
+
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          uid: 99,
+          envelope: {
+            subject: "macOS flagged",
+            from: [{ address: "mac@test.com" }],
+            date: new Date("2026-03-01"),
+            messageId: "<msg-99@test.com>",
+          },
+        };
+      },
+    });
+
+    const result = await listStarredEmails(imapClient, "INBOX");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].subject).toBe("macOS flagged");
   });
 
   it("releases lock even on error", async () => {
@@ -292,6 +351,134 @@ describe("listAllStarredEmails", () => {
     mockListFolders.mockResolvedValue([]);
 
     const result = await listAllStarredEmails(imapClient);
+
+    expect(result).toEqual([]);
+  });
+});
+
+describe("listEmailsByColor", () => {
+  it("returns emails with their flagColor from fetch", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([10, 20]);
+
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          uid: 10,
+          flagColor: "orange",
+          envelope: {
+            subject: "Orange flagged",
+            from: [{ address: "a@test.com" }],
+            date: new Date("2026-01-01"),
+            messageId: "<msg-10@test.com>",
+          },
+        };
+        yield {
+          uid: 20,
+          flagColor: "blue",
+          envelope: {
+            subject: "Blue flagged",
+            from: [{ address: "b@test.com" }],
+            date: new Date("2026-02-01"),
+            messageId: "<msg-20@test.com>",
+          },
+        };
+      },
+    });
+
+    const result = await listEmailsByColor(imapClient, "INBOX");
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ subject: "Blue flagged", color: "blue" });
+    expect(result[1]).toMatchObject({ subject: "Orange flagged", color: "orange" });
+  });
+
+  it("filters by color when specified", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([10, 20]);
+
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          uid: 10,
+          flagColor: "orange",
+          envelope: {
+            subject: "Orange flagged",
+            from: [{ address: "a@test.com" }],
+            date: new Date("2026-01-01"),
+            messageId: "<msg-10@test.com>",
+          },
+        };
+        yield {
+          uid: 20,
+          flagColor: "blue",
+          envelope: {
+            subject: "Blue flagged",
+            from: [{ address: "b@test.com" }],
+            date: new Date("2026-02-01"),
+            messageId: "<msg-20@test.com>",
+          },
+        };
+      },
+    });
+
+    const result = await listEmailsByColor(imapClient, "INBOX", "orange");
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ subject: "Orange flagged", color: "orange" });
+  });
+
+  it("skips messages with no flagColor", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([10]);
+
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          uid: 10,
+          flagColor: undefined,
+          envelope: {
+            subject: "No color",
+            from: [{ address: "a@test.com" }],
+            date: new Date("2026-01-01"),
+            messageId: "<msg-10@test.com>",
+          },
+        };
+      },
+    });
+
+    const result = await listEmailsByColor(imapClient, "INBOX");
+
+    expect(result).toHaveLength(0);
+  });
+
+  it("fetches with flags: true", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([]);
+
+    await listEmailsByColor(imapClient, "INBOX");
+
+    // search should not be called when no uids
+    // but when uids exist, fetch must include flags
+    mockClient.search.mockResolvedValue([1]);
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {}
+    });
+
+    await listEmailsByColor(imapClient, "INBOX");
+
+    expect(mockClient.fetch).toHaveBeenCalledWith(
+      "1",
+      expect.objectContaining({ flags: true }),
+      { uid: true }
+    );
+  });
+
+  it("returns empty array when no flagged emails", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([]);
+
+    const result = await listEmailsByColor(imapClient, "INBOX");
 
     expect(result).toEqual([]);
   });
