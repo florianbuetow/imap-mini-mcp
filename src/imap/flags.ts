@@ -1,8 +1,14 @@
+// ABOUTME: IMAP flag operations: star/unstar emails and list starred emails.
+// ABOUTME: Supports both standard \Flagged and macOS Apple Mail $MailFlagBit* keywords.
+
 import type { ImapClient } from "./client.js";
 import type { EmailEntry } from "./types.js";
 import { extractEmailAddress } from "./search.js";
 import { buildCompositeId } from "./resolve.js";
 import { listFolders } from "./folders.js";
+
+/** Apple Mail colored-flag keywords ($MailFlagBit0/1/2 encode the 3-bit color index). */
+export const MACOS_FLAG_KEYWORDS = ["$MailFlagBit0", "$MailFlagBit1", "$MailFlagBit2"];
 
 export interface StarredFolderGroup {
   folder: string;
@@ -30,6 +36,7 @@ export async function starEmail(
 
 /**
  * Remove the \Flagged (starred) flag from an email.
+ * Also removes macOS Apple Mail $MailFlagBit* keywords (best-effort).
  */
 export async function unstarEmail(
   imapClient: ImapClient,
@@ -40,6 +47,11 @@ export async function unstarEmail(
   try {
     const client = imapClient.getClient();
     await client.messageFlagsRemove(String(uid), ["\\Flagged"], { uid: true });
+    try {
+      await client.messageFlagsRemove(String(uid), MACOS_FLAG_KEYWORDS, { uid: true });
+    } catch {
+      // Server may not support these keywords; ignore
+    }
     return { uid, starred: false };
   } finally {
     lock.release();
@@ -94,7 +106,13 @@ export async function listStarredEmails(
   try {
     const client = imapClient.getClient();
 
-    const uids = await client.search({ flagged: true }, { uid: true });
+    const starredQuery = {
+      or: [
+        { flagged: true as const },
+        ...MACOS_FLAG_KEYWORDS.map((k) => ({ keyword: k })),
+      ],
+    };
+    const uids = await client.search(starredQuery, { uid: true });
 
     if (!uids || uids.length === 0) {
       return [];

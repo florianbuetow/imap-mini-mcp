@@ -71,6 +71,18 @@ describe("unstarEmail", () => {
     expect(result).toEqual({ uid: 42, starred: false });
   });
 
+  it("also removes macOS $MailFlagBit* keywords", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    await unstarEmail(imapClient, 42, "INBOX");
+
+    expect(mockClient.messageFlagsRemove).toHaveBeenCalledWith(
+      "42",
+      expect.arrayContaining(["$MailFlagBit0", "$MailFlagBit1", "$MailFlagBit2"]),
+      { uid: true }
+    );
+  });
+
   it("releases lock even on error", async () => {
     const { imapClient, mockClient, releaseFn } = createMockImapClient();
     mockClient.messageFlagsRemove.mockRejectedValue(new Error("fail"));
@@ -161,7 +173,12 @@ describe("listStarredEmails", () => {
     const result = await listStarredEmails(imapClient, "INBOX");
 
     expect(mockClient.search).toHaveBeenCalledWith(
-      { flagged: true },
+      expect.objectContaining({
+        or: expect.arrayContaining([
+          { flagged: true },
+          { keyword: "$MailFlagBit0" },
+        ]),
+      }),
       { uid: true }
     );
     expect(result).toHaveLength(2);
@@ -177,6 +194,48 @@ describe("listStarredEmails", () => {
     const result = await listStarredEmails(imapClient);
 
     expect(result).toEqual([]);
+  });
+
+  it("includes $MailFlagBit* keyword conditions in search query", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([]);
+
+    await listStarredEmails(imapClient, "INBOX");
+
+    expect(mockClient.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        or: expect.arrayContaining([
+          { keyword: "$MailFlagBit0" },
+          { keyword: "$MailFlagBit1" },
+          { keyword: "$MailFlagBit2" },
+        ]),
+      }),
+      { uid: true }
+    );
+  });
+
+  it("returns emails flagged via $MailFlagBit* even without \\Flagged", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([99]);
+
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          uid: 99,
+          envelope: {
+            subject: "macOS flagged",
+            from: [{ address: "mac@test.com" }],
+            date: new Date("2026-03-01"),
+            messageId: "<msg-99@test.com>",
+          },
+        };
+      },
+    });
+
+    const result = await listStarredEmails(imapClient, "INBOX");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].subject).toBe("macOS flagged");
   });
 
   it("releases lock even on error", async () => {
