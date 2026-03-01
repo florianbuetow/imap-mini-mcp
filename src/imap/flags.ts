@@ -145,6 +145,70 @@ export async function listStarredEmails(
   }
 }
 
+export interface ColoredEmailEntry extends EmailEntry {
+  color: string;
+}
+
+/**
+ * List starred emails in a mailbox with their Apple Mail color tag.
+ * Searches for \Flagged and $MailFlagBit* keywords, then returns only
+ * messages that have a flagColor (i.e. a colored Apple Mail flag).
+ * Pass a color name to filter results to that color only.
+ */
+export async function listEmailsByColor(
+  imapClient: ImapClient,
+  mailbox: string = "INBOX",
+  color?: string
+): Promise<ColoredEmailEntry[]> {
+  const lock = await imapClient.openMailbox(mailbox);
+  try {
+    const client = imapClient.getClient();
+
+    const starredQuery = {
+      or: [
+        { flagged: true as const },
+        ...MACOS_FLAG_KEYWORDS.map((k) => ({ keyword: k })),
+      ],
+    };
+    const uids = await client.search(starredQuery, { uid: true });
+
+    if (!uids || uids.length === 0) {
+      return [];
+    }
+
+    const sortedUids = uids.sort((a, b) => b - a);
+    const results: ColoredEmailEntry[] = [];
+
+    for await (const msg of client.fetch(
+      sortedUids.join(","),
+      { uid: true, envelope: true, flags: true },
+      { uid: true }
+    )) {
+      const flagColor: string | undefined = (msg as unknown as Record<string, unknown>).flagColor as string | undefined;
+      if (!flagColor) continue;
+      if (color && flagColor !== color) continue;
+
+      results.push({
+        id: buildCompositeId(msg.envelope?.date || new Date(0), msg.envelope?.messageId || ""),
+        subject: msg.envelope?.subject || "(no subject)",
+        from: extractEmailAddress(msg.envelope?.from),
+        date: msg.envelope?.date?.toISOString() || "",
+        color: flagColor,
+      });
+    }
+
+    results.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return db - da;
+    });
+
+    return results;
+  } finally {
+    lock.release();
+  }
+}
+
 /**
  * List starred emails across all folders, grouped by folder.
  * Folders with no starred emails are omitted. Groups sorted by folder path,

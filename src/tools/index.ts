@@ -22,6 +22,7 @@ import {
   markRead,
   markUnread,
   listAllStarredEmails,
+  listEmailsByColor,
   findDraftsFolder,
   resolveEmailId,
   resolveInMailbox,
@@ -599,6 +600,40 @@ const registry: ToolRegistration[] = [
     },
     handler: async (imapClient) => {
       const groups = await listAllStarredEmails(imapClient);
+      const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
+      return jsonResult({ totalCount, folders: groups });
+    },
+  },
+
+  {
+    name: "list_emails_by_color",
+    description:
+      "List emails that have an Apple Mail color flag (red, orange, yellow, green, blue, purple, grey). " +
+      "Optionally filter by a specific color. Returns emails with their color tag, grouped by folder. " +
+      LIST_DESCRIPTION_SUFFIX,
+    inputSchema: {
+      type: "object",
+      properties: {
+        color: {
+          type: "string",
+          enum: ["red", "orange", "yellow", "green", "blue", "purple", "grey"],
+          description: "Filter to emails with this color flag. Omit to return all color-flagged emails.",
+        },
+      },
+    },
+    handler: async (imapClient, args) => {
+      const color = args.color as string | undefined;
+      const folders = await listFolders(imapClient);
+      const groups: { folder: string; count: number; emails: unknown[] }[] = [];
+
+      for (const folder of folders) {
+        const emails = await listEmailsByColor(imapClient, folder.path, color);
+        if (emails.length > 0) {
+          groups.push({ folder: folder.path, count: emails.length, emails });
+        }
+      }
+
+      groups.sort((a, b) => a.folder.localeCompare(b.folder));
       const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
       return jsonResult({ totalCount, folders: groups });
     },
