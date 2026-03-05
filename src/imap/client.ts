@@ -1,5 +1,6 @@
 import { ImapFlow } from "imapflow";
 import type { ImapConfig } from "./types.js";
+import { safeStderrWrite } from "../stderr.js";
 
 /**
  * Classify an IMAP/network error into a clear, actionable message.
@@ -145,7 +146,7 @@ export class ImapClient {
     // so reconnect behavior is immediate even if ordering changes.
     flow.on("error", (error) => {
       const err = classifyImapError(error, this.config);
-      process.stderr.write(`IMAP connection error: ${err.message}\n`);
+      safeStderrWrite(`IMAP connection error: ${err.message}\n`);
       this.client = null;
     });
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import fs from "node:fs";
 import { ImapClient, createClientFromEnv, classifyImapError } from "./client.js";
 import type { ImapConfig } from "./types.js";
 
@@ -178,9 +179,7 @@ describe("ImapClient", () => {
 
   it("logs and clears cached client on error event", async () => {
     const client = new ImapClient(testConfig);
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = vi.spyOn(fs, "writeSync").mockImplementation(() => 0);
 
     await client.connect();
 
@@ -190,6 +189,7 @@ describe("ImapClient", () => {
     mockFlow._emit("error", err);
 
     expect(stderrSpy).toHaveBeenCalledWith(
+      process.stderr.fd,
       expect.stringMatching(/IMAP connection error:/)
     );
 
