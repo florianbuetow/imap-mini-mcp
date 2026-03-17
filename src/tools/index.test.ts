@@ -75,8 +75,8 @@ const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
 // ---------------------------------------------------------------------------
 
 describe("tool definitions", () => {
-  it("exposes exactly 16 tools", () => {
-    expect(tools).toHaveLength(16);
+  it("exposes exactly 17 tools", () => {
+    expect(tools).toHaveLength(17);
   });
 
   it("has the expected tool names", () => {
@@ -95,6 +95,7 @@ describe("tool definitions", () => {
       "mark_read",
       "mark_unread",
       "list_starred_emails",
+      "list_emails_by_color",
       "update_draft",
       "bulk_move_by_sender_email",
       "bulk_move_by_sender_domain",
