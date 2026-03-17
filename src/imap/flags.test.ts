@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails, listEmailsByColor } from "./flags.js";
+import { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails, listEmailsByColor, listAllEmailsByColor } from "./flags.js";
 import type { ImapClient } from "./client.js";
 
 vi.mock("./folders.js", () => ({
@@ -139,7 +139,7 @@ describe("markUnread", () => {
 });
 
 describe("listStarredEmails", () => {
-  it("searches with { flagged: true } and returns sorted emails", async () => {
+  it("searches with OR query combining \\Flagged and $MailFlagBit* keywords and returns sorted emails", async () => {
     const { imapClient, mockClient } = createMockImapClient();
     mockClient.search.mockResolvedValue([10, 20]);
 
@@ -479,6 +479,104 @@ describe("listEmailsByColor", () => {
     mockClient.search.mockResolvedValue([]);
 
     const result = await listEmailsByColor(imapClient, "INBOX");
+
+    expect(result).toEqual([]);
+  });
+});
+
+describe("listAllEmailsByColor", () => {
+  it("returns color-flagged emails grouped by folder, sorted by folder path", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    mockListFolders.mockResolvedValue([
+      { path: "Sent", name: "Sent", delimiter: "/" },
+      { path: "INBOX", name: "INBOX", delimiter: "/" },
+    ]);
+
+    let currentMailbox = "";
+    (imapClient.openMailbox as ReturnType<typeof vi.fn>).mockImplementation(
+      async (mb: string) => {
+        currentMailbox = mb;
+        return { release: vi.fn() };
+      }
+    );
+
+    mockClient.search.mockResolvedValue([10]);
+
+    mockClient.fetch.mockImplementation(() => ({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          uid: 10,
+          flagColor: currentMailbox === "INBOX" ? "red" : "blue",
+          envelope: {
+            subject: currentMailbox === "INBOX" ? "Red INBOX" : "Blue Sent",
+            from: [{ address: "a@test.com" }],
+            date: new Date("2026-01-01"),
+            messageId: `<msg-10@${currentMailbox}.com>`,
+          },
+        };
+      },
+    }));
+
+    const result = await listAllEmailsByColor(imapClient);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].folder).toBe("INBOX");
+    expect(result[0].emails[0]).toMatchObject({ color: "red" });
+    expect(result[1].folder).toBe("Sent");
+    expect(result[1].emails[0]).toMatchObject({ color: "blue" });
+  });
+
+  it("filters by color across all folders", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    mockListFolders.mockResolvedValue([
+      { path: "INBOX", name: "INBOX", delimiter: "/" },
+    ]);
+
+    mockClient.search.mockResolvedValue([10, 20]);
+
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          uid: 10,
+          flagColor: "red",
+          envelope: {
+            subject: "Red",
+            from: [{ address: "a@test.com" }],
+            date: new Date("2026-01-01"),
+            messageId: "<msg-10@test.com>",
+          },
+        };
+        yield {
+          uid: 20,
+          flagColor: "blue",
+          envelope: {
+            subject: "Blue",
+            from: [{ address: "b@test.com" }],
+            date: new Date("2026-01-02"),
+            messageId: "<msg-20@test.com>",
+          },
+        };
+      },
+    });
+
+    const result = await listAllEmailsByColor(imapClient, "red");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].emails).toHaveLength(1);
+    expect(result[0].emails[0]).toMatchObject({ color: "red" });
+  });
+
+  it("returns empty array when no color-flagged emails exist", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+
+    mockListFolders.mockResolvedValue([
+      { path: "INBOX", name: "INBOX", delimiter: "/" },
+    ]);
+    mockClient.search.mockResolvedValue([]);
+
+    const result = await listAllEmailsByColor(imapClient);
 
     expect(result).toEqual([]);
   });

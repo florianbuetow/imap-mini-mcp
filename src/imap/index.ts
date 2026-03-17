@@ -9,7 +9,7 @@ export {
 } from "./search.js";
 export type { FindEmailsOptions } from "./search.js";
 export { listFolders, createFolder, moveEmail, folderExists, bulkMoveBySender } from "./folders.js";
-export { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails, listEmailsByColor } from "./flags.js";
+export { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails, listEmailsByColor, listAllEmailsByColor } from "./flags.js";
 export type { StarredFolderGroup, ColoredEmailEntry } from "./flags.js";
 export {
   findDraftsFolder,

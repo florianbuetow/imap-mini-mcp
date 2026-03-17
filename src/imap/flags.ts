@@ -95,7 +95,21 @@ export async function markUnread(
 }
 
 /**
- * List all starred (flagged) emails in a mailbox.
+ * Builds the IMAP search query that matches \Flagged emails and all
+ * Apple Mail color-flag keywords ($MailFlagBit*).
+ */
+function buildFlaggedOrColorQuery() {
+  return {
+    or: [
+      { flagged: true as const },
+      ...MACOS_FLAG_KEYWORDS.map((k) => ({ keyword: k })),
+    ],
+  };
+}
+
+/**
+ * List all starred (flagged) emails in a mailbox, including emails that carry
+ * an Apple Mail $MailFlagBit* color keyword but not the standard \Flagged flag.
  * Returns EmailEntry[] sorted newest-first by envelope date.
  */
 export async function listStarredEmails(
@@ -106,13 +120,7 @@ export async function listStarredEmails(
   try {
     const client = imapClient.getClient();
 
-    const starredQuery = {
-      or: [
-        { flagged: true as const },
-        ...MACOS_FLAG_KEYWORDS.map((k) => ({ keyword: k })),
-      ],
-    };
-    const uids = await client.search(starredQuery, { uid: true });
+    const uids = await client.search(buildFlaggedOrColorQuery(), { uid: true });
 
     if (!uids || uids.length === 0) {
       return [];
@@ -149,6 +157,12 @@ export interface ColoredEmailEntry extends EmailEntry {
   color: string;
 }
 
+export interface ColoredFolderGroup {
+  folder: string;
+  count: number;
+  emails: ColoredEmailEntry[];
+}
+
 /**
  * List starred emails in a mailbox with their Apple Mail color tag.
  * Searches for \Flagged and $MailFlagBit* keywords, then returns only
@@ -164,13 +178,7 @@ export async function listEmailsByColor(
   try {
     const client = imapClient.getClient();
 
-    const starredQuery = {
-      or: [
-        { flagged: true as const },
-        ...MACOS_FLAG_KEYWORDS.map((k) => ({ keyword: k })),
-      ],
-    };
-    const uids = await client.search(starredQuery, { uid: true });
+    const uids = await client.search(buildFlaggedOrColorQuery(), { uid: true });
 
     if (!uids || uids.length === 0) {
       return [];
@@ -207,6 +215,30 @@ export async function listEmailsByColor(
   } finally {
     lock.release();
   }
+}
+
+/**
+ * List color-flagged emails across all folders, grouped by folder.
+ * Folders with no color-flagged emails are omitted. Groups sorted by folder path,
+ * emails sorted newest-first within each group.
+ * Pass a color name to filter results to that color only.
+ */
+export async function listAllEmailsByColor(
+  imapClient: ImapClient,
+  color?: string
+): Promise<ColoredFolderGroup[]> {
+  const folders = await listFolders(imapClient);
+  const groups: ColoredFolderGroup[] = [];
+
+  for (const folder of folders) {
+    const emails = await listEmailsByColor(imapClient, folder.path, color);
+    if (emails.length > 0) {
+      groups.push({ folder: folder.path, count: emails.length, emails });
+    }
+  }
+
+  groups.sort((a, b) => a.folder.localeCompare(b.folder));
+  return groups;
 }
 
 /**
