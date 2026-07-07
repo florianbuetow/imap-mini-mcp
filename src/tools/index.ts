@@ -83,6 +83,12 @@ const MAILBOX_HINT_SCHEMA = {
   },
 };
 
+// Default and hard-cap result counts for find_emails. Without a cap, a bare
+// call returns the entire mailbox in a single tool result (hundreds of KB /
+// 100K+ tokens), which overwhelms the MCP client and surfaces as a timeout.
+const FIND_EMAILS_DEFAULT_LIMIT = 50;
+const FIND_EMAILS_MAX_LIMIT = 200;
+
 // ---------------------------------------------------------------------------
 // Tool registry
 // ---------------------------------------------------------------------------
@@ -92,7 +98,7 @@ const registry: ToolRegistration[] = [
     name: "find_emails",
     description:
       "Search and filter emails. All parameters are optional — calling with no parameters " +
-      "returns all emails from INBOX. " +
+      "returns the most recent emails from INBOX (default 50, max 200). " +
       LIST_DESCRIPTION_SUFFIX,
     inputSchema: {
       type: "object",
@@ -130,7 +136,8 @@ const registry: ToolRegistration[] = [
         },
         limit: {
           type: "number",
-          description: "Maximum number of results to return (newest first).",
+          description:
+            "Maximum number of results to return (newest first). Default 50, max 200.",
         },
       },
     },
@@ -154,10 +161,12 @@ const registry: ToolRegistration[] = [
       if (args.subject) opts.subject = args.subject as string;
       if (args.unread_only) opts.unreadOnly = true;
       if (args.has_attachment) opts.hasAttachment = true;
-      if (args.limit) {
+      if (args.limit !== undefined) {
         const limit = args.limit as number;
         if (limit < 1) return errorResult("Error: limit must be a positive number.");
-        opts.limit = limit;
+        opts.limit = Math.min(limit, FIND_EMAILS_MAX_LIMIT);
+      } else {
+        opts.limit = FIND_EMAILS_DEFAULT_LIMIT;
       }
 
       const emails = await findEmails(imapClient, opts);

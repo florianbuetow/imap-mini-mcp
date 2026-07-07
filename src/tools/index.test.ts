@@ -903,12 +903,20 @@ describe("handleToolCall — find_emails", () => {
     vi.clearAllMocks();
   });
 
-  it("calls findEmails with folder INBOX when no params given", async () => {
+  it("applies a default limit and folder INBOX when no params given", async () => {
     mockFindEmails.mockResolvedValue([]);
     await handleToolCall(mockImapClient, "find_emails", {});
     expect(mockFindEmails).toHaveBeenCalledWith(mockImapClient, {
       folder: "INBOX",
+      limit: 50,
     });
+  });
+
+  it("clamps an oversized limit to the maximum", async () => {
+    mockFindEmails.mockResolvedValue([]);
+    await handleToolCall(mockImapClient, "find_emails", { limit: 5000 });
+    const opts = mockFindEmails.mock.calls[0][1];
+    expect(opts.limit).toBe(200);
   });
 
   it("parses relative after param", async () => {
