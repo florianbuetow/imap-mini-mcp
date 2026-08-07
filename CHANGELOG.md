@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This repository does not currently use release tags, so entries are grouped by date and major update scope.
 
+## 2026-08-07
+
+### Added
+- `add_label` tool — add a label (tag) to an email via IMAP COPY to `Labels/<name>`
+- `remove_label` tool — remove a label from an email via IMAP DELETE in `Labels/<name>`
+- `list_labels` tool — list all labels (folders under the `Labels/` namespace)
+- Unit tests for `addLabel`, `removeLabel`, `listLabels` in `src/imap/folders.test.ts`
+- Tool handler tests for `add_label`, `remove_label`, `list_labels` in `src/tools/index.test.ts`
+
 ## 2026-02-23
 
 ### Changed

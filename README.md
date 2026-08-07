@@ -114,6 +114,8 @@ Search and filter emails. All parameters are optional — calling with no parame
 
 ### Other tools
 
+Labels are tags that appear alongside emails (not folders). They are implemented as IMAP folders under the `Labels/` namespace — `add_label` copies the email to `Labels/<name>`, `remove_label` deletes that copy, and the original email stays in its source folder. This is natively supported by Proton Mail and compatible with any IMAP server that exposes labels as folders.
+
 | Tool | Description | Key parameters |
 |---|---|---|
 | `list_starred_emails` | Starred emails across all folders | — |
@@ -124,6 +126,9 @@ Search and filter emails. All parameters are optional — calling with no parame
 | `move_email` | Move an email to another folder | `id`, `destination_folder`, `source_folder?` |
 | `bulk_move_by_sender_email` | Move all emails from a sender | `sender`, `source_folder`, `destination_folder` |
 | `bulk_move_by_sender_domain` | Move all emails from a domain | `domain`, `source_folder`, `destination_folder` |
+| `add_label` | Add a label (tag) to an email | `id`, `label`, `source_folder?` |
+| `remove_label` | Remove a label from an email | `id`, `label` |
+| `list_labels` | List all labels | — |
 | `star_email` | Star an email | `id`, `mailbox?` |
 | `unstar_email` | Unstar an email | `id`, `mailbox?` |
 | `mark_read` | Mark an email as read | `id`, `mailbox?` |
