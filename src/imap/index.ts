@@ -8,7 +8,7 @@ export {
   extractEmailAddress,
 } from "./search.js";
 export type { FindEmailsOptions } from "./search.js";
-export { listFolders, createFolder, moveEmail, folderExists, bulkMoveBySender } from "./folders.js";
+export { listFolders, createFolder, moveEmail, folderExists, bulkMoveBySender, addLabel, removeLabel, listLabels } from "./folders.js";
 export { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails } from "./flags.js";
 export type { StarredFolderGroup } from "./flags.js";
 export {
