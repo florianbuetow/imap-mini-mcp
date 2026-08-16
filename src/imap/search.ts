@@ -1,5 +1,6 @@
 import type { SearchObject, MessageStructureObject } from "imapflow";
-import { simpleParser } from "mailparser";
+import { simpleParser, type ParsedMail } from "mailparser";
+import { convert as htmlToText } from "html-to-text";
 import type { EmailEntry } from "./types.js";
 import type { ImapClient } from "./client.js";
 import { buildCompositeId } from "./resolve.js";
@@ -209,6 +210,37 @@ export interface EmailContent {
 }
 
 /**
+ * Extract a plain text body from a parsed email.
+ *
+ * mailparser derives `text` from an HTML-only message itself, but only when the
+ * html node is the root or sits in a `multipart/alternative`. The shape most
+ * newsletters and order confirmations actually use is `multipart/related`, HTML
+ * plus inline images referenced by `cid:`, and there `text` stays undefined and
+ * the body came back as "(no text body)".
+ *
+ * Tables get an explicit format because the default concatenates cells with no
+ * separator at all: an invoice row renders as `Widget319.99`, which reads as a
+ * plausible number and is worse than an honest placeholder.
+ */
+export function extractTextBody(parsed: ParsedMail): string {
+  const text = parsed.text?.trim();
+  if (text) return text;
+
+  if (parsed.html) {
+    const converted = htmlToText(parsed.html, {
+      wordwrap: false,
+      selectors: [
+        { selector: "img", format: "skip" },
+        { selector: "table", format: "dataTable" },
+      ],
+    }).trim();
+    if (converted) return converted;
+  }
+
+  return "(no text body)";
+}
+
+/**
  * Fetch the full content of a single email by its UID.
  * Parses MIME to extract clean text body and enumerate attachments.
  */
@@ -270,7 +302,7 @@ export async function fetchEmailContent(
         parsed.date?.toISOString() ||
         msg.envelope?.date?.toISOString() ||
         "",
-      body: parsed.text || "(no text body)",
+      body: extractTextBody(parsed),
       attachments,
     };
   } finally {
