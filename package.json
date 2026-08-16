@@ -27,11 +27,13 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "dotenv": "^16.4.7",
+    "html-to-text": "^9.0.5",
     "imapflow": "^1.0.171",
     "mailparser": "^3.9.3",
     "mimetext": "^3.0.28"
   },
   "devDependencies": {
+    "@types/html-to-text": "^9.0.4",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^22.13.4",
     "typescript": "^5.7.3",

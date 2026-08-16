@@ -243,6 +243,42 @@ describe("fetchEmailContent", () => {
     expect(result!.attachments[0].size).toBeGreaterThan(0);
   });
 
+  it("converts the HTML part when the email has no text/plain part", async () => {
+    const rawEmail = Buffer.from(
+      [
+        "From: service@kurzurlaub.de",
+        "To: receiver@example.com",
+        "Subject: Buchungsbestaetigung",
+        "Date: Tue, 10 Feb 2026 12:00:00 +0000",
+        "Message-ID: <html-only@example.com>",
+        "Content-Type: text/html; charset=utf-8",
+        "",
+        "<html><body><p>Hiermit best&auml;tigen wir Ihre Buchung.</p>",
+        "<p>Buchungsnummer: 2663970</p></body></html>",
+      ].join("\r\n")
+    );
+
+    const { imapClient } = createMockImapClient({
+      fetchOneResult: {
+        uid: 103,
+        envelope: {
+          subject: "Buchungsbestaetigung",
+          from: [{ address: "service@kurzurlaub.de" }],
+          to: [{ address: "receiver@example.com" }],
+          date: new Date("2026-02-10T12:00:00Z"),
+          messageId: "<html-only@example.com>",
+        },
+        source: rawEmail,
+      },
+    });
+
+    const result = await fetchEmailContent(imapClient, 103);
+    expect(result).not.toBeNull();
+    expect(result!.body).toContain("Hiermit bestätigen wir Ihre Buchung.");
+    expect(result!.body).toContain("Buchungsnummer: 2663970");
+    expect(result!.body).not.toContain("<p>");
+  });
+
   it("always releases the mailbox lock", async () => {
     const { imapClient, mockLock, mockClient } = createMockImapClient({});
     mockClient.fetchOne.mockRejectedValueOnce(new Error("fetch failed"));

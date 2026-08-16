@@ -1,5 +1,6 @@
 import type { SearchObject, MessageStructureObject } from "imapflow";
-import { simpleParser } from "mailparser";
+import { simpleParser, type ParsedMail } from "mailparser";
+import { convert as htmlToText } from "html-to-text";
 import type { EmailEntry } from "./types.js";
 import type { ImapClient } from "./client.js";
 import { buildCompositeId } from "./resolve.js";
@@ -209,6 +210,25 @@ export interface EmailContent {
 }
 
 /**
+ * Extract a plain text body from a parsed email. Many senders ship HTML only,
+ * in which case mailparser leaves `text` empty and the HTML part is converted.
+ */
+export function extractTextBody(parsed: ParsedMail): string {
+  const text = parsed.text?.trim();
+  if (text) return text;
+
+  if (parsed.html) {
+    const converted = htmlToText(parsed.html, {
+      wordwrap: false,
+      selectors: [{ selector: "img", format: "skip" }],
+    }).trim();
+    if (converted) return converted;
+  }
+
+  return "(no text body)";
+}
+
+/**
  * Fetch the full content of a single email by its UID.
  * Parses MIME to extract clean text body and enumerate attachments.
  */
@@ -270,7 +290,7 @@ export async function fetchEmailContent(
         parsed.date?.toISOString() ||
         msg.envelope?.date?.toISOString() ||
         "",
-      body: parsed.text || "(no text body)",
+      body: extractTextBody(parsed),
       attachments,
     };
   } finally {
