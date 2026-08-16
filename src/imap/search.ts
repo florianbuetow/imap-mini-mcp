@@ -210,8 +210,17 @@ export interface EmailContent {
 }
 
 /**
- * Extract a plain text body from a parsed email. Many senders ship HTML only,
- * in which case mailparser leaves `text` empty and the HTML part is converted.
+ * Extract a plain text body from a parsed email.
+ *
+ * mailparser derives `text` from an HTML-only message itself, but only when the
+ * html node is the root or sits in a `multipart/alternative`. The shape most
+ * newsletters and order confirmations actually use is `multipart/related`, HTML
+ * plus inline images referenced by `cid:`, and there `text` stays undefined and
+ * the body came back as "(no text body)".
+ *
+ * Tables get an explicit format because the default concatenates cells with no
+ * separator at all: an invoice row renders as `Widget319.99`, which reads as a
+ * plausible number and is worse than an honest placeholder.
  */
 export function extractTextBody(parsed: ParsedMail): string {
   const text = parsed.text?.trim();
@@ -220,7 +229,10 @@ export function extractTextBody(parsed: ParsedMail): string {
   if (parsed.html) {
     const converted = htmlToText(parsed.html, {
       wordwrap: false,
-      selectors: [{ selector: "img", format: "skip" }],
+      selectors: [
+        { selector: "img", format: "skip" },
+        { selector: "table", format: "dataTable" },
+      ],
     }).trim();
     if (converted) return converted;
   }

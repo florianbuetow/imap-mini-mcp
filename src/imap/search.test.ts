@@ -243,7 +243,10 @@ describe("fetchEmailContent", () => {
     expect(result!.attachments[0].size).toBeGreaterThan(0);
   });
 
-  it("converts the HTML part when the email has no text/plain part", async () => {
+  it("converts the HTML part of a multipart/related message", async () => {
+    // The shape newsletters and order confirmations actually use: HTML plus an
+    // inline image. mailparser fills `text` itself for a bare text/html root,
+    // so only this one leaves the body empty without the fallback.
     const rawEmail = Buffer.from(
       [
         "From: service@kurzurlaub.de",
@@ -251,10 +254,25 @@ describe("fetchEmailContent", () => {
         "Subject: Buchungsbestaetigung",
         "Date: Tue, 10 Feb 2026 12:00:00 +0000",
         "Message-ID: <html-only@example.com>",
+        "MIME-Version: 1.0",
+        'Content-Type: multipart/related; boundary="BOUNDARY"',
+        "",
+        "--BOUNDARY",
         "Content-Type: text/html; charset=utf-8",
         "",
         "<html><body><p>Hiermit best&auml;tigen wir Ihre Buchung.</p>",
-        "<p>Buchungsnummer: 2663970</p></body></html>",
+        "<p>Buchungsnummer: 2663970</p>",
+        '<img src="cid:logo" alt="Logo">',
+        "<table><tr><th>Artikel</th><th>Menge</th><th>Preis</th></tr>",
+        "<tr><td>Zimmer</td><td>1</td><td>499,00</td></tr></table>",
+        "</body></html>",
+        "--BOUNDARY",
+        "Content-Type: image/png",
+        "Content-ID: <logo>",
+        "Content-Transfer-Encoding: base64",
+        "",
+        "iVBORw0KGgo=",
+        "--BOUNDARY--",
       ].join("\r\n")
     );
 
@@ -276,7 +294,9 @@ describe("fetchEmailContent", () => {
     expect(result).not.toBeNull();
     expect(result!.body).toContain("Hiermit bestätigen wir Ihre Buchung.");
     expect(result!.body).toContain("Buchungsnummer: 2663970");
-    expect(result!.body).not.toContain("<p>");
+    expect(result!.body).not.toMatch(/<[a-z/]/i);
+    // Cells must stay apart; the default format would render "Zimmer1499,00".
+    expect(result!.body).toMatch(/Zimmer\s+1\s+499,00/);
   });
 
   it("always releases the mailbox lock", async () => {
