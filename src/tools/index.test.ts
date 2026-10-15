@@ -32,6 +32,9 @@ vi.mock("../imap/index.js", async () => {
     removeLabel: vi.fn(),
     listLabels: vi.fn(),
     listAllEmailsByColor: vi.fn(),
+    listAllStarredEmails: vi.fn(),
+    markRead: vi.fn(),
+    markUnread: vi.fn(),
   };
 });
 
@@ -56,6 +59,9 @@ import {
   removeLabel,
   listLabels,
   listAllEmailsByColor,
+  listAllStarredEmails,
+  markRead,
+  markUnread,
 } from "../imap/index.js";
 
 const mockFetchContent = vi.mocked(fetchEmailContent);
@@ -78,6 +84,9 @@ const mockAddLabel = vi.mocked(addLabel);
 const mockRemoveLabel = vi.mocked(removeLabel);
 const mockListLabels = vi.mocked(listLabels);
 const mockListAllEmailsByColor = vi.mocked(listAllEmailsByColor);
+const mockListAllStarredEmails = vi.mocked(listAllStarredEmails);
+const mockMarkRead = vi.mocked(markRead);
+const mockMarkUnread = vi.mocked(markUnread);
 const mockImapClient = {} as ImapClient;
 
 const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
@@ -1306,6 +1315,115 @@ describe("handleToolCall — list_emails_by_color", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed).toEqual({ totalCount: 0, folders: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — mark_read / mark_unread
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — mark_read", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns an error when id is missing", async () => {
+    const result = await handleToolCall(mockImapClient, "mark_read", {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("id is required");
+    expect(mockMarkRead).not.toHaveBeenCalled();
+  });
+
+  it("resolves the id and marks the email as read", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 42, mailbox: "INBOX" });
+    mockMarkRead.mockResolvedValue({ uid: 42, read: true });
+
+    const result = await handleToolCall(mockImapClient, "mark_read", { id: TEST_ID });
+
+    expect(mockMarkRead).toHaveBeenCalledWith(mockImapClient, 42, "INBOX");
+    expect(JSON.parse(result.content[0].text)).toEqual({ id: TEST_ID, read: true });
+  });
+
+  it("passes the mailbox hint to the id resolver", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 7, mailbox: "Archive" });
+    mockMarkRead.mockResolvedValue({ uid: 7, read: true });
+
+    await handleToolCall(mockImapClient, "mark_read", { id: TEST_ID, mailbox: "Archive" });
+
+    expect(mockResolveEmailId).toHaveBeenCalledWith(mockImapClient, TEST_ID, "Archive");
+    expect(mockMarkRead).toHaveBeenCalledWith(mockImapClient, 7, "Archive");
+  });
+});
+
+describe("handleToolCall — mark_unread", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns an error when id is missing", async () => {
+    const result = await handleToolCall(mockImapClient, "mark_unread", {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("id is required");
+    expect(mockMarkUnread).not.toHaveBeenCalled();
+  });
+
+  it("resolves the id and marks the email as unread", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 42, mailbox: "INBOX" });
+    mockMarkUnread.mockResolvedValue({ uid: 42, read: false });
+
+    const result = await handleToolCall(mockImapClient, "mark_unread", { id: TEST_ID });
+
+    expect(mockMarkUnread).toHaveBeenCalledWith(mockImapClient, 42, "INBOX");
+    expect(JSON.parse(result.content[0].text)).toEqual({ id: TEST_ID, read: false });
+  });
+
+  it("passes the mailbox hint to the id resolver", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 7, mailbox: "Archive" });
+    mockMarkUnread.mockResolvedValue({ uid: 7, read: false });
+
+    await handleToolCall(mockImapClient, "mark_unread", { id: TEST_ID, mailbox: "Archive" });
+
+    expect(mockResolveEmailId).toHaveBeenCalledWith(mockImapClient, TEST_ID, "Archive");
+    expect(mockMarkUnread).toHaveBeenCalledWith(mockImapClient, 7, "Archive");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — list_starred_emails
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — list_starred_emails", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns totalCount summed across folders plus the folder groups", async () => {
+    const email = (n: number) => ({
+      id: `${TEST_ID}${n}`,
+      subject: `Starred ${n}`,
+      from: "a@example.com",
+      date: "2026-02-01T10:00:00.000Z",
+    });
+    mockListAllStarredEmails.mockResolvedValue([
+      { folder: "INBOX", count: 2, emails: [email(1), email(2)] },
+      { folder: "Sent", count: 1, emails: [email(3)] },
+    ]);
+
+    const result = await handleToolCall(mockImapClient, "list_starred_emails", {});
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.totalCount).toBe(3);
+    expect(parsed.folders.map((g: { folder: string }) => g.folder)).toEqual(["INBOX", "Sent"]);
+  });
+
+  it("returns totalCount 0 when nothing is starred", async () => {
+    mockListAllStarredEmails.mockResolvedValue([]);
+
+    const result = await handleToolCall(mockImapClient, "list_starred_emails", {});
+
+    expect(JSON.parse(result.content[0].text)).toEqual({ totalCount: 0, folders: [] });
   });
 });
 

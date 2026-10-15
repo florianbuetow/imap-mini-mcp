@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { listFolders, addLabel, removeLabel, listLabels } from "./folders.js";
+import { listFolders, createFolder, folderExists, moveEmail, bulkMoveBySender, addLabel, removeLabel, listLabels } from "./folders.js";
 import type { ImapClient } from "./client.js";
 
 function createMockImapClient(mailboxes: any[]) {
@@ -192,5 +192,215 @@ describe("removeLabel", () => {
 
     await expect(removeLabel(imapClient, 55, "Work")).rejects.toThrow("delete failed");
     expect(mockLock.release).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createFolder
+// ---------------------------------------------------------------------------
+
+describe("createFolder", () => {
+  it("creates the mailbox and returns its path", async () => {
+    const mockClient = { mailboxCreate: vi.fn().mockResolvedValue({}) };
+    const imapClient = {
+      connect: vi.fn().mockResolvedValue(mockClient),
+    } as unknown as ImapClient;
+
+    const result = await createFolder(imapClient, "INBOX/Receipts");
+
+    expect(mockClient.mailboxCreate).toHaveBeenCalledWith("INBOX/Receipts");
+    expect(result).toBe("INBOX/Receipts");
+  });
+
+  it("propagates server errors", async () => {
+    const mockClient = {
+      mailboxCreate: vi.fn().mockRejectedValue(new Error("already exists")),
+    };
+    const imapClient = {
+      connect: vi.fn().mockResolvedValue(mockClient),
+    } as unknown as ImapClient;
+
+    await expect(createFolder(imapClient, "INBOX")).rejects.toThrow("already exists");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// folderExists
+// ---------------------------------------------------------------------------
+
+describe("folderExists", () => {
+  it("returns true when the exact path exists", async () => {
+    const { imapClient } = createMockImapClient([
+      { path: "INBOX", name: "INBOX", delimiter: "/" },
+      { path: "INBOX/Receipts", name: "Receipts", delimiter: "/" },
+    ]);
+
+    expect(await folderExists(imapClient, "INBOX/Receipts")).toBe(true);
+  });
+
+  it("returns false when the path does not exist", async () => {
+    const { imapClient } = createMockImapClient([
+      { path: "INBOX", name: "INBOX", delimiter: "/" },
+    ]);
+
+    expect(await folderExists(imapClient, "Archive")).toBe(false);
+  });
+
+  it("does not match on the display name alone", async () => {
+    const { imapClient } = createMockImapClient([
+      { path: "INBOX/Receipts", name: "Receipts", delimiter: "/" },
+    ]);
+
+    expect(await folderExists(imapClient, "Receipts")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// moveEmail
+// ---------------------------------------------------------------------------
+
+function createMockImapClientWithMove(moveResult: unknown) {
+  const mockLock = { release: vi.fn() };
+  const mockClient = {
+    messageMove: vi.fn().mockResolvedValue(moveResult),
+  };
+  const imapClient = {
+    openMailbox: vi.fn().mockResolvedValue(mockLock),
+    getClient: vi.fn().mockReturnValue(mockClient),
+  } as unknown as ImapClient;
+
+  return { imapClient, mockClient, mockLock };
+}
+
+describe("moveEmail", () => {
+  it("moves by UID from the source folder to the destination", async () => {
+    const { imapClient, mockClient } = createMockImapClientWithMove({
+      uidMap: new Map([[42, 7]]),
+    });
+
+    await moveEmail(imapClient, 42, "INBOX", "Archive");
+
+    expect(imapClient.openMailbox).toHaveBeenCalledWith("INBOX");
+    expect(mockClient.messageMove).toHaveBeenCalledWith("42", "Archive", { uid: true });
+  });
+
+  it("returns the new UID reported by the server", async () => {
+    const { imapClient } = createMockImapClientWithMove({
+      uidMap: new Map([[42, 7]]),
+    });
+
+    const result = await moveEmail(imapClient, 42, "INBOX", "Archive");
+
+    expect(result).toEqual({ uid: 7, destination: "Archive" });
+  });
+
+  it("keeps the original UID when the server reports no uidMap", async () => {
+    const { imapClient } = createMockImapClientWithMove({});
+
+    const result = await moveEmail(imapClient, 42, "INBOX", "Archive");
+
+    expect(result).toEqual({ uid: 42, destination: "Archive" });
+  });
+
+  it("keeps the original UID when the move reports failure (false)", async () => {
+    const { imapClient } = createMockImapClientWithMove(false);
+
+    const result = await moveEmail(imapClient, 42, "INBOX", "Archive");
+
+    expect(result).toEqual({ uid: 42, destination: "Archive" });
+  });
+
+  it("keeps the original UID when the uidMap has no entry for it", async () => {
+    const { imapClient } = createMockImapClientWithMove({
+      uidMap: new Map([[99, 5]]),
+    });
+
+    const result = await moveEmail(imapClient, 42, "INBOX", "Archive");
+
+    expect(result.uid).toBe(42);
+  });
+
+  it("releases the lock on success", async () => {
+    const { imapClient, mockLock } = createMockImapClientWithMove({});
+
+    await moveEmail(imapClient, 42, "INBOX", "Archive");
+
+    expect(mockLock.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the lock on error", async () => {
+    const { imapClient, mockClient, mockLock } = createMockImapClientWithMove({});
+    mockClient.messageMove.mockRejectedValue(new Error("move failed"));
+
+    await expect(moveEmail(imapClient, 42, "INBOX", "Archive")).rejects.toThrow("move failed");
+    expect(mockLock.release).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bulkMoveBySender
+// ---------------------------------------------------------------------------
+
+function createMockImapClientWithBulkMove(uids: number[] | false) {
+  const mockLock = { release: vi.fn() };
+  const mockClient = {
+    search: vi.fn().mockResolvedValue(uids),
+    messageMove: vi.fn().mockResolvedValue({}),
+  };
+  const imapClient = {
+    openMailbox: vi.fn().mockResolvedValue(mockLock),
+    getClient: vi.fn().mockReturnValue(mockClient),
+  } as unknown as ImapClient;
+
+  return { imapClient, mockClient, mockLock };
+}
+
+describe("bulkMoveBySender", () => {
+  it("searches the source folder by From and moves all matching UIDs in one call", async () => {
+    const { imapClient, mockClient } = createMockImapClientWithBulkMove([3, 5, 8]);
+
+    const moved = await bulkMoveBySender(imapClient, "INBOX", "Newsletters", "@news.example.com");
+
+    expect(imapClient.openMailbox).toHaveBeenCalledWith("INBOX");
+    expect(mockClient.search).toHaveBeenCalledWith({ from: "@news.example.com" }, { uid: true });
+    expect(mockClient.messageMove).toHaveBeenCalledTimes(1);
+    expect(mockClient.messageMove).toHaveBeenCalledWith("3,5,8", "Newsletters", { uid: true });
+    expect(moved).toBe(3);
+  });
+
+  it("returns 0 and moves nothing when no email matches", async () => {
+    const { imapClient, mockClient } = createMockImapClientWithBulkMove([]);
+
+    const moved = await bulkMoveBySender(imapClient, "INBOX", "Newsletters", "a@b.com");
+
+    expect(moved).toBe(0);
+    expect(mockClient.messageMove).not.toHaveBeenCalled();
+  });
+
+  it("returns 0 and moves nothing when the search reports failure (false)", async () => {
+    const { imapClient, mockClient } = createMockImapClientWithBulkMove(false);
+
+    const moved = await bulkMoveBySender(imapClient, "INBOX", "Newsletters", "a@b.com");
+
+    expect(moved).toBe(0);
+    expect(mockClient.messageMove).not.toHaveBeenCalled();
+  });
+
+  it("releases the lock when nothing matches", async () => {
+    const { imapClient, mockLock } = createMockImapClientWithBulkMove([]);
+
+    await bulkMoveBySender(imapClient, "INBOX", "Newsletters", "a@b.com");
+
+    expect(mockLock.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the lock on error", async () => {
+    const { imapClient, mockClient, mockLock } = createMockImapClientWithBulkMove([1]);
+    mockClient.messageMove.mockRejectedValue(new Error("move failed"));
+
+    await expect(
+      bulkMoveBySender(imapClient, "INBOX", "Newsletters", "a@b.com")
+    ).rejects.toThrow("move failed");
+    expect(mockLock.release).toHaveBeenCalledTimes(1);
   });
 });

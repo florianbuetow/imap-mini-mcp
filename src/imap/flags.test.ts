@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { starEmail, unstarEmail, markRead, markUnread, listStarredEmails, listAllStarredEmails, listEmailsByColor, listAllEmailsByColor } from "./flags.js";
 import type { ImapClient } from "./client.js";
+import { buildCompositeId } from "./resolve.js";
 
 vi.mock("./folders.js", () => ({
   listFolders: vi.fn().mockResolvedValue([]),
@@ -69,6 +70,26 @@ describe("unstarEmail", () => {
       { uid: true }
     );
     expect(result).toEqual({ uid: 42, starred: false });
+  });
+
+  it("still reports success when the server rejects removing $MailFlagBit* keywords", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.messageFlagsRemove
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error("keywords not supported"));
+
+    const result = await unstarEmail(imapClient, 42, "INBOX");
+
+    expect(result).toEqual({ uid: 42, starred: false });
+    expect(mockClient.messageFlagsRemove).toHaveBeenCalledTimes(2);
+  });
+
+  it("propagates an error from removing the \\Flagged flag", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.messageFlagsRemove.mockRejectedValueOnce(new Error("flag removal failed"));
+
+    await expect(unstarEmail(imapClient, 42, "INBOX")).rejects.toThrow("flag removal failed");
+    expect(mockClient.messageFlagsRemove).toHaveBeenCalledTimes(1);
   });
 
   it("also removes macOS $MailFlagBit* keywords", async () => {
@@ -194,6 +215,80 @@ describe("listStarredEmails", () => {
     const result = await listStarredEmails(imapClient);
 
     expect(result).toEqual([]);
+  });
+
+  it("falls back to placeholders when the envelope lacks subject, sender, date and message-id", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([5]);
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { uid: 5, envelope: {} };
+      },
+    });
+
+    const result = await listStarredEmails(imapClient, "INBOX");
+
+    expect(result).toEqual([
+      {
+        id: buildCompositeId(new Date(0), ""),
+        subject: "(no subject)",
+        from: "",
+        date: "",
+      },
+    ]);
+  });
+
+  it("falls back to placeholders when a message has no envelope at all", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([5]);
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { uid: 5 };
+      },
+    });
+
+    const result = await listStarredEmails(imapClient, "INBOX");
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ subject: "(no subject)", from: "", date: "" });
+  });
+
+  it("sorts newest first and places undated emails last", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([1, 2, 3]);
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { uid: 1, envelope: { subject: "undated", messageId: "<1@t>" } };
+        yield {
+          uid: 2,
+          envelope: { subject: "old", date: new Date("2026-01-01"), messageId: "<2@t>" },
+        };
+        yield {
+          uid: 3,
+          envelope: { subject: "new", date: new Date("2026-03-01"), messageId: "<3@t>" },
+        };
+      },
+    });
+
+    const result = await listStarredEmails(imapClient, "INBOX");
+
+    expect(result.map((e) => e.subject)).toEqual(["new", "old", "undated"]);
+  });
+
+  it("requests UIDs newest first from the fetch", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([10, 30, 20]);
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {},
+    });
+
+    await listStarredEmails(imapClient, "INBOX");
+
+    expect(mockClient.fetch).toHaveBeenCalledWith(
+      "30,20,10",
+      expect.objectContaining({ uid: true, envelope: true }),
+      { uid: true }
+    );
   });
 
   it("includes $MailFlagBit* keyword conditions in search query", async () => {
@@ -450,6 +545,60 @@ describe("listEmailsByColor", () => {
     const result = await listEmailsByColor(imapClient, "INBOX");
 
     expect(result).toHaveLength(0);
+  });
+
+  it("falls back to placeholders when the envelope lacks subject, sender, date and message-id", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([5]);
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { uid: 5, flagColor: "green", envelope: {} };
+      },
+    });
+
+    const result = await listEmailsByColor(imapClient, "INBOX");
+
+    expect(result).toEqual([
+      {
+        id: buildCompositeId(new Date(0), ""),
+        subject: "(no subject)",
+        from: "",
+        date: "",
+        color: "green",
+      },
+    ]);
+  });
+
+  it("sorts newest first and places undated emails last", async () => {
+    const { imapClient, mockClient } = createMockImapClient();
+    mockClient.search.mockResolvedValue([1, 2, 3]);
+    mockClient.fetch.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { uid: 1, flagColor: "red", envelope: { subject: "undated", messageId: "<1@t>" } };
+        yield {
+          uid: 2,
+          flagColor: "red",
+          envelope: { subject: "old", date: new Date("2026-01-01"), messageId: "<2@t>" },
+        };
+        yield {
+          uid: 3,
+          flagColor: "red",
+          envelope: { subject: "new", date: new Date("2026-03-01"), messageId: "<3@t>" },
+        };
+      },
+    });
+
+    const result = await listEmailsByColor(imapClient, "INBOX");
+
+    expect(result.map((e) => e.subject)).toEqual(["new", "old", "undated"]);
+  });
+
+  it("releases the lock on error", async () => {
+    const { imapClient, mockClient, releaseFn } = createMockImapClient();
+    mockClient.search.mockRejectedValue(new Error("search failed"));
+
+    await expect(listEmailsByColor(imapClient, "INBOX")).rejects.toThrow("search failed");
+    expect(releaseFn).toHaveBeenCalledTimes(1);
   });
 
   it("fetches with flags: true", async () => {

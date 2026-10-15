@@ -267,6 +267,95 @@ describe("ImapClient", () => {
     await expect(client.openMailbox("MISSING")).rejects.toBe(mailboxErr);
     expect(freshFlow.connect).not.toHaveBeenCalled();
   });
+
+  it.each([
+    "ECONNRESET",
+    "EPIPE",
+    "ETIMEDOUT",
+    "ECONNREFUSED",
+    "ENOTFOUND",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "EAI_AGAIN",
+  ])("openMailbox retries once on %s", async (code) => {
+    const client = new ImapClient(testConfig);
+    await client.connect();
+
+    // Message deliberately matches no connection keyword, so only the code can trigger the retry
+    mockFlow.getMailboxLock.mockRejectedValueOnce(
+      Object.assign(new Error("lock failed"), { code })
+    );
+
+    const freshLock = { release: vi.fn() };
+    const freshFlow = createMockFlow({
+      getMailboxLock: vi.fn().mockResolvedValue(freshLock),
+    });
+    ImapFlowMock.mockImplementation(function () { return freshFlow; });
+
+    const lock = await client.openMailbox("INBOX");
+
+    expect(lock).toBe(freshLock);
+    expect(freshFlow.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("openMailbox does not retry when a non-Error value is thrown", async () => {
+    const client = new ImapClient(testConfig);
+    await client.connect();
+
+    mockFlow.getMailboxLock.mockRejectedValueOnce("connection lost");
+
+    const freshFlow = createMockFlow();
+    ImapFlowMock.mockImplementation(function () { return freshFlow; });
+
+    await expect(client.openMailbox("INBOX")).rejects.toBe("connection lost");
+    expect(freshFlow.connect).not.toHaveBeenCalled();
+  });
+
+  it("openMailbox gives up after a single retry", async () => {
+    const client = new ImapClient(testConfig);
+    await client.connect();
+
+    mockFlow.getMailboxLock.mockRejectedValueOnce(new Error("socket closed"));
+
+    const retryErr = new Error("socket closed again");
+    const freshFlow = createMockFlow({
+      getMailboxLock: vi.fn().mockRejectedValue(retryErr),
+    });
+    ImapFlowMock.mockImplementation(function () { return freshFlow; });
+
+    await expect(client.openMailbox("INBOX")).rejects.toBe(retryErr);
+    expect(freshFlow.getMailboxLock).toHaveBeenCalledTimes(1);
+  });
+
+  it("getClient throws before connect() has been called", () => {
+    const client = new ImapClient(testConfig);
+
+    expect(() => client.getClient()).toThrow(/not connected/i);
+  });
+
+  it("getClient returns the connected flow", async () => {
+    const client = new ImapClient(testConfig);
+    await client.connect();
+
+    expect(client.getClient()).toBe(mockFlow);
+  });
+
+  it("disconnect logs out and clears the cached client", async () => {
+    const client = new ImapClient(testConfig);
+    await client.connect();
+
+    await client.disconnect();
+
+    expect(mockFlow.logout).toHaveBeenCalledTimes(1);
+    expect(() => client.getClient()).toThrow(/not connected/i);
+  });
+
+  it("disconnect is a no-op when never connected", async () => {
+    const client = new ImapClient(testConfig);
+
+    await expect(client.disconnect()).resolves.toBeUndefined();
+    expect(mockFlow.logout).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -324,21 +413,56 @@ describe("createClientFromEnv", () => {
     expect(client).toBeDefined();
   });
 
-  it("defaults port to 993", () => {
+  const configOf = (client: ImapClient) =>
+    (client as unknown as { config: ImapConfig }).config;
+
+  function setRequiredEnv() {
     process.env.IMAP_HOST = "imap.example.com";
     process.env.IMAP_USER = "user";
     process.env.IMAP_PASS = "pass";
+    delete process.env.IMAP_STARTTLS;
+    delete process.env.IMAP_TLS_REJECT_UNAUTHORIZED;
+  }
 
-    const client = createClientFromEnv();
-    expect(client).toBeDefined();
+  it("defaults port to 993", () => {
+    setRequiredEnv();
+
+    expect(configOf(createClientFromEnv()).port).toBe(993);
   });
 
-  it("defaults secure to true", () => {
-    process.env.IMAP_HOST = "imap.example.com";
-    process.env.IMAP_USER = "user";
-    process.env.IMAP_PASS = "pass";
+  it("reads a custom port", () => {
+    setRequiredEnv();
+    process.env.IMAP_PORT = "143";
 
-    const client = createClientFromEnv();
-    expect(client).toBeDefined();
+    expect(configOf(createClientFromEnv()).port).toBe(143);
+  });
+
+  it("defaults secure, starttls and tlsRejectUnauthorized to true", () => {
+    setRequiredEnv();
+
+    const config = configOf(createClientFromEnv());
+    expect(config.secure).toBe(true);
+    expect(config.starttls).toBe(true);
+    expect(config.tlsRejectUnauthorized).toBe(true);
+  });
+
+  it("disables secure, starttls and tlsRejectUnauthorized when set to 'false'", () => {
+    setRequiredEnv();
+    process.env.IMAP_SECURE = "false";
+    process.env.IMAP_STARTTLS = "false";
+    process.env.IMAP_TLS_REJECT_UNAUTHORIZED = "false";
+
+    const config = configOf(createClientFromEnv());
+    expect(config.secure).toBe(false);
+    expect(config.starttls).toBe(false);
+    expect(config.tlsRejectUnauthorized).toBe(false);
+  });
+
+  it("passes host and credentials through", () => {
+    setRequiredEnv();
+
+    const config = configOf(createClientFromEnv());
+    expect(config.host).toBe("imap.example.com");
+    expect(config.auth).toEqual({ user: "user", pass: "pass" });
   });
 });
