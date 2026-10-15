@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This repository does not currently use release tags, so entries are grouped by date and major update scope.
 
+## 2026-08-16
+
+### Fixed
+- `fetch_email_content` returned "(no text body)" for emails without a `text/plain` part — the HTML part is now converted to plain text
+
 ## 2026-02-23
 
 ### Changed
