@@ -31,6 +31,7 @@ vi.mock("../imap/index.js", async () => {
     addLabel: vi.fn(),
     removeLabel: vi.fn(),
     listLabels: vi.fn(),
+    listAllEmailsByColor: vi.fn(),
   };
 });
 
@@ -54,6 +55,7 @@ import {
   addLabel,
   removeLabel,
   listLabels,
+  listAllEmailsByColor,
 } from "../imap/index.js";
 
 const mockFetchContent = vi.mocked(fetchEmailContent);
@@ -75,6 +77,7 @@ const mockFindEmails = vi.mocked(findEmails);
 const mockAddLabel = vi.mocked(addLabel);
 const mockRemoveLabel = vi.mocked(removeLabel);
 const mockListLabels = vi.mocked(listLabels);
+const mockListAllEmailsByColor = vi.mocked(listAllEmailsByColor);
 const mockImapClient = {} as ImapClient;
 
 const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
@@ -1153,6 +1156,156 @@ describe("handleToolCall — list_labels", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.count).toBe(0);
     expect(parsed.labels).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — get_emails_by_label
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — get_emails_by_label", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("requires label", () => {
+    const tool = tools.find((t) => t.name === "get_emails_by_label")!;
+    expect(tool.inputSchema.required).toEqual(["label"]);
+  });
+
+  it("returns an error when label is empty", async () => {
+    const result = await handleToolCall(mockImapClient, "get_emails_by_label", {
+      label: "",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("label is required");
+    expect(mockFindEmails).not.toHaveBeenCalled();
+  });
+
+  it("searches the Labels/<name> folder with the default limit", async () => {
+    mockFindEmails.mockResolvedValue([]);
+
+    await handleToolCall(mockImapClient, "get_emails_by_label", {
+      label: "Work",
+    });
+
+    expect(mockFindEmails).toHaveBeenCalledWith(mockImapClient, {
+      folder: "Labels/Work",
+      limit: 50,
+    });
+  });
+
+  it("clamps an oversized limit to the maximum", async () => {
+    mockFindEmails.mockResolvedValue([]);
+
+    await handleToolCall(mockImapClient, "get_emails_by_label", {
+      label: "Work",
+      limit: 5000,
+    });
+
+    expect(mockFindEmails.mock.calls[0][1].limit).toBe(200);
+  });
+
+  it("raises a non-positive limit to 1", async () => {
+    mockFindEmails.mockResolvedValue([]);
+
+    await handleToolCall(mockImapClient, "get_emails_by_label", {
+      label: "Work",
+      limit: -5,
+    });
+
+    expect(mockFindEmails.mock.calls[0][1].limit).toBe(1);
+  });
+
+  it("returns count and emails as JSON", async () => {
+    mockFindEmails.mockResolvedValue([
+      {
+        id: TEST_ID,
+        subject: "Quarterly plan",
+        from: "boss@example.com",
+        date: "2026-02-01T10:00:00.000Z",
+      },
+    ]);
+
+    const result = await handleToolCall(mockImapClient, "get_emails_by_label", {
+      label: "Work",
+    });
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.count).toBe(1);
+    expect(parsed.emails[0].subject).toBe("Quarterly plan");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleToolCall — list_emails_by_color
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — list_emails_by_color", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("restricts color to the Apple Mail palette and has no required params", () => {
+    const tool = tools.find((t) => t.name === "list_emails_by_color")!;
+    const props = tool.inputSchema.properties as Record<string, { enum?: string[] }>;
+    expect(props.color.enum).toEqual([
+      "red",
+      "orange",
+      "yellow",
+      "green",
+      "blue",
+      "purple",
+      "grey",
+    ]);
+    expect(tool.inputSchema.required).toBeUndefined();
+  });
+
+  it("lists all colors when no color is given", async () => {
+    mockListAllEmailsByColor.mockResolvedValue([]);
+
+    await handleToolCall(mockImapClient, "list_emails_by_color", {});
+
+    expect(mockListAllEmailsByColor).toHaveBeenCalledWith(mockImapClient, undefined);
+  });
+
+  it("passes the color filter through", async () => {
+    mockListAllEmailsByColor.mockResolvedValue([]);
+
+    await handleToolCall(mockImapClient, "list_emails_by_color", { color: "red" });
+
+    expect(mockListAllEmailsByColor).toHaveBeenCalledWith(mockImapClient, "red");
+  });
+
+  it("returns totalCount summed across folders plus the folder groups", async () => {
+    const email = (n: number, color: string) => ({
+      id: `${TEST_ID}${n}`,
+      subject: `Mail ${n}`,
+      from: "a@example.com",
+      date: "2026-02-01T10:00:00.000Z",
+      color,
+    });
+    mockListAllEmailsByColor.mockResolvedValue([
+      { folder: "INBOX", count: 2, emails: [email(1, "red"), email(2, "blue")] },
+      { folder: "Sent", count: 1, emails: [email(3, "red")] },
+    ]);
+
+    const result = await handleToolCall(mockImapClient, "list_emails_by_color", {});
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.totalCount).toBe(3);
+    expect(parsed.folders).toHaveLength(2);
+    expect(parsed.folders[0].folder).toBe("INBOX");
+    expect(parsed.folders[1].emails[0].color).toBe("red");
+  });
+
+  it("returns totalCount 0 when nothing is color-flagged", async () => {
+    mockListAllEmailsByColor.mockResolvedValue([]);
+
+    const result = await handleToolCall(mockImapClient, "list_emails_by_color", {});
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toEqual({ totalCount: 0, folders: [] });
   });
 });
 

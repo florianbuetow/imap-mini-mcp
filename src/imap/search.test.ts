@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { parseTimeParam, hasAttachmentPart, findEmails, extractEmailAddress, fetchEmailContent, fetchEmailAttachment } from "./search.js";
+import { parseTimeParam, hasAttachmentPart, findEmails, extractEmailAddress, extractTextBody, fetchEmailContent, fetchEmailAttachment } from "./search.js";
 import type { ImapClient } from "./client.js";
 import type { MessageStructureObject } from "imapflow";
+import type { ParsedMail } from "mailparser";
 
 // ---------------------------------------------------------------------------
 // parseTimeParam
@@ -442,6 +443,65 @@ describe("hasAttachmentPart", () => {
 
   it("returns false for null/undefined input", () => {
     expect(hasAttachmentPart(undefined as any)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractTextBody
+// ---------------------------------------------------------------------------
+
+describe("extractTextBody", () => {
+  const parsed = (fields: { text?: string; html?: string | false }) =>
+    fields as unknown as ParsedMail;
+
+  it("returns the trimmed text part when present", () => {
+    expect(extractTextBody(parsed({ text: "  plain body \n" }))).toBe("plain body");
+  });
+
+  it("prefers the text part over the HTML part", () => {
+    const body = extractTextBody(
+      parsed({ text: "plain version", html: "<p>html version</p>" })
+    );
+    expect(body).toBe("plain version");
+  });
+
+  it("falls back to the HTML part when text is missing", () => {
+    expect(extractTextBody(parsed({ html: "<p>Hello <b>world</b></p>" }))).toBe(
+      "Hello world"
+    );
+  });
+
+  it("falls back to the HTML part when text is only whitespace", () => {
+    expect(extractTextBody(parsed({ text: "  \n ", html: "<p>From HTML</p>" }))).toBe(
+      "From HTML"
+    );
+  });
+
+  it("keeps table cells apart instead of concatenating them", () => {
+    const body = extractTextBody(
+      parsed({
+        html: "<table><tr><td>Widget</td><td>3</td><td>19.99</td></tr></table>",
+      })
+    );
+    expect(body).toMatch(/Widget\s+3\s+19\.99/);
+  });
+
+  it("skips images, including their alt text", () => {
+    const body = extractTextBody(
+      parsed({ html: '<p>Order shipped</p><img src="cid:logo" alt="Company Logo">' })
+    );
+    expect(body).toBe("Order shipped");
+  });
+
+  it("returns the placeholder when there is no text and no HTML", () => {
+    expect(extractTextBody(parsed({}))).toBe("(no text body)");
+    expect(extractTextBody(parsed({ html: false }))).toBe("(no text body)");
+  });
+
+  it("returns the placeholder when the HTML converts to nothing", () => {
+    expect(extractTextBody(parsed({ html: '<img src="cid:logo">' }))).toBe(
+      "(no text body)"
+    );
   });
 });
 
