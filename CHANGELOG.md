@@ -10,6 +10,15 @@ This repository does not currently use release tags, so entries are grouped by d
 ### Fixed
 - `fetch_email_content` returned "(no text body)" for emails without a `text/plain` part — the HTML part is now converted to plain text
 
+## 2026-08-07
+
+### Added
+- `add_label` tool — add a label (tag) to an email via IMAP COPY to `Labels/<name>`
+- `remove_label` tool — remove a label from an email via IMAP DELETE in `Labels/<name>`
+- `list_labels` tool — list all labels (folders under the `Labels/` namespace)
+- Unit tests for `addLabel`, `removeLabel`, `listLabels` in `src/imap/folders.test.ts`
+- Tool handler tests for `add_label`, `remove_label`, `list_labels` in `src/tools/index.test.ts`
+
 ## 2026-03-01
 
 ### Added

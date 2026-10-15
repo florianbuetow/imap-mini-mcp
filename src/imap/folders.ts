@@ -79,6 +79,66 @@ export async function folderExists(
 }
 
 /**
+ * Add a label to an email. Labels are Proton Mail tags exposed as IMAP folders
+ * under the `Labels/` namespace. This is a COPY operation — the email stays
+ * in its source folder and also appears under the label.
+ *
+ * @param labelName - bare label name (e.g. "Work", not "Labels/Work")
+ */
+export async function addLabel(
+  imapClient: ImapClient,
+  uid: number,
+  sourceFolder: string,
+  labelName: string
+): Promise<{ labelPath: string }> {
+  const labelPath = `Labels/${labelName}`;
+  const lock = await imapClient.openMailbox(sourceFolder);
+  try {
+    const client = imapClient.getClient();
+    const result = await client.messageCopy(String(uid), labelPath, { uid: true });
+    if (!result) {
+      throw new Error(`Failed to copy email to label "${labelName}".`);
+    }
+    return { labelPath };
+  } finally {
+    lock.release();
+  }
+}
+
+/**
+ * Remove a label from an email. Deletes the label copy in the Labels/<name>
+ * folder — the original email in its source folder is unaffected.
+ *
+ * @param labelName - bare label name (e.g. "Work", not "Labels/Work")
+ * @param uidInLabel - the UID of the email within the Labels/<name> folder
+ */
+export async function removeLabel(
+  imapClient: ImapClient,
+  uidInLabel: number,
+  labelName: string
+): Promise<{ removed: boolean }> {
+  const labelPath = `Labels/${labelName}`;
+  const lock = await imapClient.openMailbox(labelPath);
+  try {
+    const client = imapClient.getClient();
+    await client.messageDelete(String(uidInLabel), { uid: true });
+    return { removed: true };
+  } finally {
+    lock.release();
+  }
+}
+
+/**
+ * List all labels (folders under the Labels/ namespace).
+ */
+export async function listLabels(
+  imapClient: ImapClient
+): Promise<FolderEntry[]> {
+  const folders = await listFolders(imapClient);
+  return folders.filter((f) => f.path.startsWith("Labels/"));
+}
+
+/**
  * Bulk-move all emails matching a FROM query from one folder to another.
  * Returns the number of emails moved.
  *
