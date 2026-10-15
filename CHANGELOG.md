@@ -10,6 +10,15 @@ This repository does not currently use release tags, so entries are grouped by d
 ### Fixed
 - `fetch_email_content` returned "(no text body)" for emails without a `text/plain` part — the HTML part is now converted to plain text
 
+## 2026-03-01
+
+### Added
+- `list_emails_by_color` tool — list emails that have an Apple Mail color flag, optionally filtered by color (`red`, `orange`, `yellow`, `green`, `blue`, `purple`, `grey`). Returns emails with their `color` field, grouped by folder.
+
+### Changed
+- `list_starred_emails` now returns emails flagged via Apple Mail `$MailFlagBit*` keywords, even when `\Flagged` is not set
+- `unstar_email` now also removes `$MailFlagBit*` keywords in addition to `\Flagged` (best-effort)
+
 ## 2026-02-23
 
 ### Changed
