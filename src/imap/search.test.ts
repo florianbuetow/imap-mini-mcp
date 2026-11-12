@@ -618,6 +618,48 @@ describe("findEmails", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("applies limit after the date sort when UID order is not date order", async () => {
+    // Proton Bridge's initial sync assigns UIDs newest-first, so the highest
+    // UID is the OLDEST message. The limit must pick by date, not by UID.
+    const { imapClient, mockClient } = createMockImapClient({
+      search: [1, 2, 3],
+      fetchMessages: [
+        {
+          uid: 3,
+          envelope: {
+            subject: "Oldest",
+            from: [{ address: "c@test.com" }],
+            date: new Date("2026-02-01"),
+            messageId: "<msg-3@test.com>",
+          },
+        },
+        {
+          uid: 2,
+          envelope: {
+            subject: "Middle",
+            from: [{ address: "b@test.com" }],
+            date: new Date("2026-02-02"),
+            messageId: "<msg-2@test.com>",
+          },
+        },
+        {
+          uid: 1,
+          envelope: {
+            subject: "Newest",
+            from: [{ address: "a@test.com" }],
+            date: new Date("2026-02-03"),
+            messageId: "<msg-1@test.com>",
+          },
+        },
+      ],
+    });
+
+    const result = await findEmails(imapClient, { limit: 1 });
+    expect(mockClient.fetch.mock.calls[0][0]).toBe("3,2,1");
+    expect(result).toHaveLength(1);
+    expect(result[0].subject).toBe("Newest");
+  });
+
   it("uses INBOX as default folder", async () => {
     const { imapClient } = createMockImapClient({ search: [] });
     await findEmails(imapClient, {});

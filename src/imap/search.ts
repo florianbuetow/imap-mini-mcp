@@ -124,13 +124,12 @@ export async function findEmails(
     const uids = await client.search(query, { uid: true });
     if (!uids || uids.length === 0) return [];
 
-    // Sort newest-first by UID (higher UID = newer), apply limit early
-    // to reduce fetch volume when not filtering by attachment
-    let sortedUids = uids.sort((a, b) => b - a);
-
-    if (opts.limit && !opts.hasAttachment) {
-      sortedUids = sortedUids.slice(0, opts.limit);
-    }
+    // Don't slice by UID before the date sort: "higher UID = newer" does not
+    // hold on every server. Proton Bridge's initial sync assigns UIDs
+    // newest-first, so an early slice returned the OLDEST matches. Fetching
+    // uid+envelope for all matches is cheap; the limit is applied after the
+    // date sort below.
+    const sortedUids = uids.sort((a, b) => b - a);
 
     // Determine what to fetch
     const fetchFields: any = { uid: true, envelope: true };
