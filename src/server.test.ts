@@ -81,6 +81,19 @@ describe("createServer", () => {
     expect(mockHandleToolCall).toHaveBeenCalledWith(imapClient, "list_folders", {});
   });
 
+  it("refuses an explicit account argument, since there is only one account", async () => {
+    const result = await client.callTool({
+      name: "list_folders",
+      arguments: { account: "work" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as TextContent)[0].text).toBe(
+      'Error: this server has a single account; call the tool without "account".'
+    );
+    expect(mockHandleToolCall).not.toHaveBeenCalled();
+  });
+
   it("returns a handler-reported error result unchanged", async () => {
     mockHandleToolCall.mockResolvedValue({
       content: [{ type: "text", text: "Error: id is required." }],
@@ -112,6 +125,108 @@ describe("createServer", () => {
     expect(result.isError).toBe(true);
     expect((result.content as TextContent)[0].text).toBe(
       "Error executing list_folders: plain string failure"
+    );
+  });
+});
+
+describe("createServer with several accounts", () => {
+  const work = { user: "me@work.test" } as ImapClient;
+  const home = { user: "me@home.test" } as ImapClient;
+  let server: ReturnType<typeof createServer>;
+  let client: Client;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    server = createServer(
+      new Map([
+        ["work", work],
+        ["home", home],
+      ])
+    );
+    client = new Client({ name: "test-client", version: "1.0.0" });
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+  });
+
+  afterEach(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  it("adds a required account parameter to every tool", async () => {
+    const result = await client.listTools();
+
+    expect(result.tools.map((t) => t.name)).toEqual(tools.map((t) => t.name));
+    for (const tool of result.tools) {
+      expect(tool.inputSchema.properties?.account).toMatchObject({
+        type: "string",
+        enum: ["work", "home"],
+      });
+      expect(tool.inputSchema.required?.[0]).toBe("account");
+    }
+  });
+
+  it("keeps each tool's own parameters and required fields", async () => {
+    const result = await client.listTools();
+
+    for (const original of tools) {
+      const listed = result.tools.find((t) => t.name === original.name)!;
+      expect(Object.keys(listed.inputSchema.properties ?? {})).toEqual([
+        "account",
+        ...Object.keys(original.inputSchema.properties ?? {}),
+      ]);
+      expect(listed.inputSchema.required).toEqual([
+        "account",
+        ...(original.inputSchema.required ?? []),
+      ]);
+    }
+  });
+
+  it("dispatches to the chosen account without the account argument", async () => {
+    mockHandleToolCall.mockResolvedValue({
+      content: [{ type: "text", text: "folders listed" }],
+    });
+
+    const result = await client.callTool({
+      name: "list_folders",
+      arguments: { account: "home", verbose: true },
+    });
+
+    expect(mockHandleToolCall).toHaveBeenCalledWith(home, "list_folders", {
+      verbose: true,
+    });
+    expect((result.content as TextContent)[0].text).toBe("folders listed");
+  });
+
+  it.each([
+    ["no", {}],
+    ["an unknown", { account: "other" }],
+    ["a non-string", { account: 1 }],
+  ])("refuses a call with %s account", async (_case, args) => {
+    const result = await client.callTool({ name: "list_folders", arguments: args });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as TextContent)[0].text).toBe(
+      'Error: "account" must be one of: work, home'
+    );
+    expect(mockHandleToolCall).not.toHaveBeenCalled();
+  });
+
+  it("names the account when a tool call throws", async () => {
+    mockHandleToolCall.mockRejectedValue(new Error("IMAP authentication failed"));
+
+    const result = await client.callTool({
+      name: "list_folders",
+      arguments: { account: "work" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as TextContent)[0].text).toBe(
+      'Error executing list_folders (account "work"): IMAP authentication failed'
     );
   });
 });

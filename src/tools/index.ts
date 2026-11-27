@@ -395,7 +395,7 @@ const registry: ToolRegistration[] = [
       if (!to || !subject || !body)
         return errorResult("Error: to, subject, and body are required.");
 
-      const sender = process.env.IMAP_USER || "";
+      const sender = imapClient.user;
       const result = await createDraft(imapClient, sender, {
         to,
         subject,
@@ -463,7 +463,7 @@ const registry: ToolRegistration[] = [
       // Derive CC for reply-all: original to + cc, minus current user
       let cc: string | undefined;
       if (replyAll) {
-        const currentUser = (process.env.IMAP_USER || "").toLowerCase();
+        const currentUser = imapClient.user.toLowerCase();
         const allRecipients = original.to
           .split(",")
           .map((addr) => addr.trim())
@@ -473,7 +473,7 @@ const registry: ToolRegistration[] = [
         }
       }
 
-      const sender = process.env.IMAP_USER || "";
+      const sender = imapClient.user;
       const result = await createDraft(imapClient, sender, {
         to,
         subject,
@@ -707,7 +707,7 @@ const registry: ToolRegistration[] = [
           "Draft not found. The id must refer to an email in the Drafts folder."
         );
 
-      const sender = process.env.IMAP_USER || "";
+      const sender = imapClient.user;
       const result = await updateDraft(imapClient, sender, uid, {
         to,
         subject,

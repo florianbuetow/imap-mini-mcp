@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
-import { ImapClient, createClientFromEnv, classifyImapError } from "./client.js";
+import {
+  ImapClient,
+  createClientFromEnv,
+  createClientFromSettings,
+  classifyImapError,
+} from "./client.js";
 import type { ImapConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -464,5 +469,62 @@ describe("createClientFromEnv", () => {
     const config = configOf(createClientFromEnv());
     expect(config.host).toBe("imap.example.com");
     expect(config.auth).toEqual({ user: "user", pass: "pass" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createClientFromSettings
+// ---------------------------------------------------------------------------
+
+describe("createClientFromSettings", () => {
+  const configOf = (client: ImapClient) =>
+    (client as unknown as { config: ImapConfig }).config;
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reads the same IMAP_* settings as the environment", () => {
+    const client = createClientFromSettings({
+      IMAP_HOST: "127.0.0.1",
+      IMAP_PORT: "1143",
+      IMAP_SECURE: "false",
+      IMAP_STARTTLS: "false",
+      IMAP_TLS_REJECT_UNAUTHORIZED: "false",
+      IMAP_USER: "me@proton.me",
+      IMAP_PASS: "bridge-pass",
+    });
+
+    expect(configOf(client)).toEqual({
+      host: "127.0.0.1",
+      port: 1143,
+      secure: false,
+      starttls: false,
+      tlsRejectUnauthorized: false,
+      auth: { user: "me@proton.me", pass: "bridge-pass" },
+    });
+  });
+
+  it("does not fall back to process.env", () => {
+    vi.stubEnv("IMAP_HOST", "env.example.com");
+
+    expect(() =>
+      createClientFromSettings({ IMAP_USER: "user", IMAP_PASS: "pass" })
+    ).toThrow("IMAP_HOST environment variable is required");
+  });
+
+  it("names a missing setting with the given description", () => {
+    expect(() =>
+      createClientFromSettings(
+        { IMAP_HOST: "imap.example.com", IMAP_PASS: "pass" },
+        (key) => `${key} in account file "work"`
+      )
+    ).toThrow('IMAP_USER in account file "work" is required');
+  });
+});
+
+describe("ImapClient.user", () => {
+  it("returns the login name of the account", () => {
+    expect(new ImapClient(testConfig).user).toBe("user");
   });
 });

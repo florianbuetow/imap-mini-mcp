@@ -3,6 +3,8 @@
 import "dotenv/config";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createClientFromEnv } from "./imap/index.js";
+import type { ImapClient } from "./imap/index.js";
+import { loadAccounts } from "./accounts.js";
 import { createServer } from "./server.js";
 import { safeStderrWrite } from "./stderr.js";
 
@@ -31,8 +33,14 @@ function logFatalError(label: string, err: unknown): void {
 }
 
 async function main() {
-  const imapClient = createClientFromEnv();
-  const server = createServer(imapClient);
+  // IMAP_ACCOUNTS_DIR selects multi-account mode (see accounts.ts);
+  // otherwise one account comes from the IMAP_* environment variables.
+  const accountsDir = process.env.IMAP_ACCOUNTS_DIR;
+  const accounts = accountsDir ? loadAccounts(accountsDir) : null;
+  const clients: ImapClient[] = accounts
+    ? [...accounts.values()]
+    : [createClientFromEnv()];
+  const server = createServer(accounts ?? clients[0]);
   const transport = new StdioServerTransport();
 
   let isShuttingDown = false;
@@ -43,11 +51,15 @@ async function main() {
     }
     isShuttingDown = true;
 
-    try {
-      await imapClient.disconnect();
-    } catch (error) {
-      logFatalError("SHUTDOWN ERROR", error);
-      exitCode = 1;
+    // Log out of all accounts at once, so one slow server doesn't hold up the rest.
+    const results = await Promise.allSettled(
+      clients.map((imapClient) => imapClient.disconnect())
+    );
+    for (const result of results) {
+      if (result.status === "rejected") {
+        logFatalError("SHUTDOWN ERROR", result.reason);
+        exitCode = 1;
+      }
     }
 
     process.exit(exitCode);
