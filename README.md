@@ -82,6 +82,47 @@ Or as MCP client config:
 }
 ```
 
+### Multiple accounts
+
+One server process can serve several mailboxes. Put one file per account in a directory and set `IMAP_ACCOUNTS_DIR` to that directory:
+
+```
+accounts/
+  work.env
+  home.env
+  proton.env
+```
+
+Each file holds the `IMAP_*` settings from the table above for that account, one `KEY=value` per line:
+
+```
+IMAP_HOST=imap.example.com
+IMAP_USER=you@example.com
+IMAP_PASS=your-app-password
+```
+
+```json
+{
+  "mcpServers": {
+    "imap-mini-mcp": {
+      "command": "node",
+      "args": ["/path/to/imap-mini-mcp/dist/index.js"],
+      "env": {
+        "IMAP_ACCOUNTS_DIR": "/path/to/accounts"
+      }
+    }
+  }
+}
+```
+
+- The account name is the file name without `.env`, made of letters, digits, `-` and `_`. Files starting with `.` and subdirectories are ignored.
+- Values are taken verbatim up to the end of the line: no quotes and no inline comments, so passwords may contain any character. Lines starting with `#` are comments.
+- Every tool takes a required `account` parameter (an enum of the account names). Email ids belong to the account they came from.
+- Drafts use the account's own `IMAP_USER` as their From address.
+- While `IMAP_ACCOUNTS_DIR` is set, the `IMAP_*` environment variables are ignored.
+
+The one-file-per-account layout also works with systemd credentials (`LoadCredential=`) and with secrets mounted as a directory (Docker, Kubernetes).
+
 ## Tools
 
 Every email is identified by a composite **id** (`YYYY-MM-DDTHH:mm:ss.<Message-ID>`) that is globally unique and stable across folder moves. Use the `id` returned by `find_emails` to fetch content, download attachments, move emails, or create reply drafts. Action tools accept an optional `mailbox` hint for faster lookup; if omitted, all folders are searched.

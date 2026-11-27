@@ -1,4 +1,9 @@
-export { ImapClient, createClientFromEnv } from "./client.js";
+export {
+  ImapClient,
+  createClientFromEnv,
+  createClientFromSettings,
+} from "./client.js";
+export type { ImapSettings } from "./client.js";
 export {
   findEmails,
   parseTimeParam,

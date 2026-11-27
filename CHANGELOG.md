@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This repository does not currently use release tags, so entries are grouped by date and major update scope.
 
+## 2026-11-27
+
+### Added
+- Multiple accounts in one server process: set `IMAP_ACCOUNTS_DIR` to a directory with one `IMAP_*` settings file per account (`<name>` or `<name>.env`). Every tool then takes a required `account` parameter that selects the mailbox, and errors name the account
+- `createClientFromSettings` — builds an `ImapClient` from `IMAP_*` settings; `createClientFromEnv` now uses it, and account files use it too, so they support the same options (e.g. ProtonMail Bridge)
+- Unit tests in `src/accounts.test.ts`, plus multi-account cases in `src/server.test.ts`, `src/index.test.ts`, `src/tools/index.test.ts` and `src/imap/client.test.ts`
+
+### Changed
+- `create_draft`, `draft_reply` and `update_draft` take the From address from the client's own login (`ImapClient.user`) instead of reading `IMAP_USER` at call time; with a single account this is the same value
+
 ## 2026-08-16
 
 ### Fixed

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createClientFromEnv: vi.fn(),
+  loadAccounts: vi.fn(),
   createServer: vi.fn(),
   safeStderrWrite: vi.fn(),
 }));
@@ -13,6 +14,7 @@ vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
 vi.mock("./imap/index.js", () => ({
   createClientFromEnv: mocks.createClientFromEnv,
 }));
+vi.mock("./accounts.js", () => ({ loadAccounts: mocks.loadAccounts }));
 vi.mock("./server.js", () => ({ createServer: mocks.createServer }));
 vi.mock("./stderr.js", () => ({ safeStderrWrite: mocks.safeStderrWrite }));
 
@@ -59,6 +61,7 @@ describe("entrypoint (src/index.ts)", () => {
     connect = vi.fn().mockResolvedValue(undefined);
 
     mocks.createClientFromEnv.mockReset().mockReturnValue({ disconnect });
+    mocks.loadAccounts.mockReset();
     mocks.createServer.mockReset().mockReturnValue({ connect });
     mocks.safeStderrWrite.mockReset();
 
@@ -75,6 +78,7 @@ describe("entrypoint (src/index.ts)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   describe("startup", () => {
@@ -227,6 +231,66 @@ describe("entrypoint (src/index.ts)", () => {
 
       expect(exitSpy).toHaveBeenCalledTimes(1);
       expect(disconnect).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("multi-account mode (IMAP_ACCOUNTS_DIR)", () => {
+    let disconnectWork: ReturnType<typeof vi.fn>;
+    let disconnectHome: ReturnType<typeof vi.fn>;
+    let accounts: Map<string, { disconnect: ReturnType<typeof vi.fn> }>;
+
+    beforeEach(() => {
+      vi.stubEnv("IMAP_ACCOUNTS_DIR", "/run/accounts");
+      disconnectWork = vi.fn().mockResolvedValue(undefined);
+      disconnectHome = vi.fn().mockResolvedValue(undefined);
+      accounts = new Map([
+        ["work", { disconnect: disconnectWork }],
+        ["home", { disconnect: disconnectHome }],
+      ]);
+      mocks.loadAccounts.mockReturnValue(accounts);
+    });
+
+    it("loads the accounts from the directory and passes them to the server", async () => {
+      await loadAndWaitForStartup();
+
+      expect(mocks.loadAccounts).toHaveBeenCalledWith("/run/accounts");
+      expect(mocks.createClientFromEnv).not.toHaveBeenCalled();
+      expect(mocks.createServer).toHaveBeenCalledWith(accounts);
+    });
+
+    it("disconnects every account on shutdown", async () => {
+      await loadAndWaitForStartup();
+
+      fire(processHandlers, "SIGTERM");
+
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
+      expect(disconnectWork).toHaveBeenCalledTimes(1);
+      expect(disconnectHome).toHaveBeenCalledTimes(1);
+    });
+
+    it("still disconnects the other accounts when one logout fails, then exits 1", async () => {
+      disconnectWork.mockRejectedValue(new Error("logout failed"));
+      await loadAndWaitForStartup();
+
+      fire(processHandlers, "SIGTERM");
+
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
+      expect(disconnectHome).toHaveBeenCalledTimes(1);
+      expect(logged()).toContain("SHUTDOWN ERROR");
+      expect(logged()).toContain("logout failed");
+    });
+
+    it("logs a fatal error and exits 1 when the accounts cannot be loaded", async () => {
+      mocks.loadAccounts.mockImplementation(() => {
+        throw new Error("No account files found in IMAP_ACCOUNTS_DIR (/run/accounts)");
+      });
+
+      await loadEntrypoint();
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
+
+      expect(logged()).toContain("FATAL ERROR");
+      expect(logged()).toContain("No account files found");
+      expect(connect).not.toHaveBeenCalled();
     });
   });
 });

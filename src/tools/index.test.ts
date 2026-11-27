@@ -642,6 +642,87 @@ describe("handleToolCall — update_draft", () => {
 });
 
 // ---------------------------------------------------------------------------
+// handleToolCall — draft sender with several accounts
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — draft sender is the client's own login", () => {
+  const workClient = { user: "me@work.test" } as ImapClient;
+  const draftResult = {
+    id: "2026-02-11T00:00:00.<draft@test.com>",
+    subject: "Subject",
+    to: "recipient@test.com",
+    date: "2026-02-11T00:00:00.000Z",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("IMAP_USER", "me@test.com");
+  });
+
+  it("create_draft uses the client's login instead of IMAP_USER", async () => {
+    mockCreateDraft.mockResolvedValue(draftResult);
+
+    await handleToolCall(workClient, "create_draft", {
+      to: "recipient@test.com",
+      subject: "Subject",
+      body: "Hello",
+    });
+
+    expect(mockCreateDraft).toHaveBeenCalledWith(
+      workClient,
+      "me@work.test",
+      expect.objectContaining({ to: "recipient@test.com" })
+    );
+  });
+
+  it("draft_reply uses the client's login and leaves it out of reply-all CC", async () => {
+    mockResolveEmailId.mockResolvedValue({ uid: 100, mailbox: "INBOX" });
+    mockFetchContent.mockResolvedValue({
+      id: TEST_ID,
+      subject: "Thread",
+      from: "sender@test.com",
+      to: "me@work.test, me@test.com",
+      date: "2026-02-10T00:00:00.000Z",
+      body: "Body",
+      attachments: [],
+    });
+    mockCreateDraft.mockResolvedValue(draftResult);
+
+    await handleToolCall(workClient, "draft_reply", {
+      id: TEST_ID,
+      body: "Reply",
+      reply_all: true,
+    });
+
+    expect(mockCreateDraft).toHaveBeenCalledWith(
+      workClient,
+      "me@work.test",
+      expect.objectContaining({ to: "sender@test.com", cc: "me@test.com" })
+    );
+  });
+
+  it("update_draft uses the client's login instead of IMAP_USER", async () => {
+    mockFindDraftsFolder.mockResolvedValue("Drafts");
+    mockResolveInMailbox.mockResolvedValue(400);
+    mockUpdateDraft.mockResolvedValue(draftResult);
+
+    await handleToolCall(workClient, "update_draft", {
+      id: TEST_ID,
+      to: "recipient@test.com",
+      subject: "Subject",
+      body: "New content",
+    });
+
+    expect(mockUpdateDraft).toHaveBeenCalledWith(
+      workClient,
+      "me@work.test",
+      400,
+      expect.objectContaining({ body: "New content" })
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // handleToolCall — star_email / unstar_email
 // ---------------------------------------------------------------------------
 

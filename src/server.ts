@@ -4,12 +4,67 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { ImapClient } from "./imap/index.js";
+import type { ImapAccounts } from "./accounts.js";
 import { tools, handleToolCall } from "./tools/index.js";
+
+type Tool = (typeof tools)[number];
+
+function errorResult(text: string) {
+  return {
+    content: [{ type: "text" as const, text }],
+    isError: true,
+  };
+}
+
+/**
+ * Multi-account mode: add the required "account" parameter to a tool.
+ */
+function withAccountParam(tool: Tool, accountNames: string[]): Tool {
+  return {
+    ...tool,
+    inputSchema: {
+      ...tool.inputSchema,
+      properties: {
+        account: {
+          type: "string",
+          enum: accountNames,
+          description:
+            "Mail account to use. Email ids belong to the account they came from: " +
+            "use the same account for follow-up calls on an email.",
+        },
+        ...tool.inputSchema.properties,
+      },
+      required: ["account", ...(tool.inputSchema.required ?? [])],
+    },
+  };
+}
+
+async function dispatch(
+  imapClient: ImapClient,
+  name: string,
+  args: Record<string, unknown>,
+  label: string
+) {
+  try {
+    return await handleToolCall(imapClient, name, args);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+    return errorResult(`Error executing ${label}: ${message}`);
+  }
+}
 
 /**
  * Create and configure the MCP server.
+ *
+ * Pass one ImapClient for a single account, or several accounts by name (see
+ * loadAccounts). With several accounts, every tool takes a required "account"
+ * parameter that selects the mailbox.
  */
-export function createServer(imapClient: ImapClient): Server {
+export function createServer(imap: ImapClient | ImapAccounts): Server {
+  const accounts = imap instanceof Map ? imap : null;
+  const accountNames = accounts ? [...accounts.keys()] : [];
+
   const server = new Server(
     {
       name: "imap-mini-mcp",
@@ -24,28 +79,31 @@ export function createServer(imapClient: ImapClient): Server {
 
   // List available tools
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: [...tools] };
+    if (!accounts) {
+      return { tools: [...tools] };
+    }
+    return {
+      tools: tools.map((tool) => withAccountParam(tool, accountNames)),
+    };
   });
 
   // Dispatch tool calls
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    try {
-      return await handleToolCall(imapClient, name, args || {});
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error executing ${name}: ${message}`,
-          },
-        ],
-        isError: true,
-      };
+    if (!accounts) {
+      return dispatch(imap as ImapClient, name, args || {}, name);
     }
+
+    const { account, ...rest }: Record<string, unknown> = args ?? {};
+    const imapClient =
+      typeof account === "string" ? accounts.get(account) : undefined;
+    if (!imapClient) {
+      return errorResult(
+        `Error: "account" must be one of: ${accountNames.join(", ")}`
+      );
+    }
+    return dispatch(imapClient, name, rest, `${name} (account "${account}")`);
   });
 
   return server;

@@ -103,6 +103,11 @@ export class ImapClient {
     this.config = config;
   }
 
+  /** The login name of this account. Drafts use it as their From address. */
+  get user(): string {
+    return this.config.auth.user;
+  }
+
   /**
    * Get or create an IMAP connection.
    * Discards stale connections and reconnects automatically.
@@ -196,22 +201,37 @@ export class ImapClient {
   }
 }
 
+/** IMAP_* settings by name, from the environment or from an account file. */
+export type ImapSettings = Record<string, string | undefined>;
+
 /**
  * Create an ImapClient from environment variables.
  */
 export function createClientFromEnv(): ImapClient {
-  const host = process.env.IMAP_HOST;
-  const port = parseInt(process.env.IMAP_PORT || "993", 10);
-  const secure = process.env.IMAP_SECURE !== "false";
-  const starttls = process.env.IMAP_STARTTLS !== "false";
-  const tlsRejectUnauthorized =
-    process.env.IMAP_TLS_REJECT_UNAUTHORIZED !== "false";
-  const user = process.env.IMAP_USER;
-  const pass = process.env.IMAP_PASS;
+  return createClientFromSettings(process.env);
+}
 
-  if (!host) throw new Error("IMAP_HOST environment variable is required");
-  if (!user) throw new Error("IMAP_USER environment variable is required");
-  if (!pass) throw new Error("IMAP_PASS environment variable is required");
+/**
+ * Create an ImapClient from IMAP_* settings (IMAP_HOST, IMAP_USER, IMAP_PASS,
+ * IMAP_PORT, IMAP_SECURE, IMAP_STARTTLS, IMAP_TLS_REJECT_UNAUTHORIZED).
+ * `describe` names a setting in error messages.
+ */
+export function createClientFromSettings(
+  settings: ImapSettings,
+  describe: (key: string) => string = (key) => `${key} environment variable`
+): ImapClient {
+  const host = settings.IMAP_HOST;
+  const port = parseInt(settings.IMAP_PORT || "993", 10);
+  const secure = settings.IMAP_SECURE !== "false";
+  const starttls = settings.IMAP_STARTTLS !== "false";
+  const tlsRejectUnauthorized =
+    settings.IMAP_TLS_REJECT_UNAUTHORIZED !== "false";
+  const user = settings.IMAP_USER;
+  const pass = settings.IMAP_PASS;
+
+  if (!host) throw new Error(`${describe("IMAP_HOST")} is required`);
+  if (!user) throw new Error(`${describe("IMAP_USER")} is required`);
+  if (!pass) throw new Error(`${describe("IMAP_PASS")} is required`);
 
   return new ImapClient({
     host,
