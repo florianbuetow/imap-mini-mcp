@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This repository does not currently use release tags, so entries are grouped by date and major update scope.
 
+## 2026-11-27
+
+### Fixed
+- `create_draft`, `draft_reply` and `update_draft` failed on strict IMAP servers such as Fastmail ("Message contains bare newlines"): drafts are now built with CRLF line endings only (#7)
+
 ## 2026-08-16
 
 ### Fixed

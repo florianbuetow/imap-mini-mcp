@@ -77,7 +77,10 @@ function buildMessage(
     data: options.body,
   });
 
-  return msg.asRaw();
+  // RFC 5322 requires CRLF line endings. The body arrives with "\n" and
+  // mimetext uses os.EOL, but strict servers (e.g. Fastmail) reject bare LF
+  // on APPEND. See issue #7.
+  return msg.asRaw().replace(/\r\n|\r|\n/g, "\r\n");
 }
 
 /**
