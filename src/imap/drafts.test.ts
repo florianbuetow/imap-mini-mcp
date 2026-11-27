@@ -184,6 +184,22 @@ describe("createDraft", () => {
     // Should be in format YYYY-MM-DDTHH:mm:ss.<messageId>
     expect(result.id.length).toBeGreaterThan(20);
   });
+
+  it("uses CRLF line endings only, as strict servers require", async () => {
+    const { imapClient, mockClient } = createMockImapClient({
+      mailboxes: [{ path: "Drafts", name: "Drafts", specialUse: "\\Drafts" }],
+    });
+
+    await createDraft(imapClient, "me@test.com", {
+      to: "recipient@test.com",
+      subject: "Line endings",
+      body: "Line one\nLine two\r\nLine three\rLine four",
+    });
+
+    const raw = mockClient.append.mock.calls[0][1].toString("utf-8");
+    expect(raw).toContain("Line one\r\nLine two\r\nLine three\r\nLine four");
+    expect(raw.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
+  });
 });
 
 // ---------------------------------------------------------------------------
