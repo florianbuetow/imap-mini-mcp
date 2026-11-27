@@ -71,14 +71,6 @@ function errorResult(message: string): ToolResult {
   };
 }
 
-/**
- * From address for drafts: the login of the account this client belongs to.
- * Falls back to IMAP_USER for clients without a login (e.g. test doubles).
- */
-function senderOf(imapClient: ImapClient): string {
-  return imapClient.user || process.env.IMAP_USER || "";
-}
-
 // ---------------------------------------------------------------------------
 // Shared schema and description helpers
 // ---------------------------------------------------------------------------
@@ -403,7 +395,7 @@ const registry: ToolRegistration[] = [
       if (!to || !subject || !body)
         return errorResult("Error: to, subject, and body are required.");
 
-      const sender = senderOf(imapClient);
+      const sender = imapClient.user;
       const result = await createDraft(imapClient, sender, {
         to,
         subject,
@@ -471,7 +463,7 @@ const registry: ToolRegistration[] = [
       // Derive CC for reply-all: original to + cc, minus current user
       let cc: string | undefined;
       if (replyAll) {
-        const currentUser = senderOf(imapClient).toLowerCase();
+        const currentUser = imapClient.user.toLowerCase();
         const allRecipients = original.to
           .split(",")
           .map((addr) => addr.trim())
@@ -481,7 +473,7 @@ const registry: ToolRegistration[] = [
         }
       }
 
-      const sender = senderOf(imapClient);
+      const sender = imapClient.user;
       const result = await createDraft(imapClient, sender, {
         to,
         subject,
@@ -715,7 +707,7 @@ const registry: ToolRegistration[] = [
           "Draft not found. The id must refer to an email in the Drafts folder."
         );
 
-      const sender = senderOf(imapClient);
+      const sender = imapClient.user;
       const result = await updateDraft(imapClient, sender, uid, {
         to,
         subject,

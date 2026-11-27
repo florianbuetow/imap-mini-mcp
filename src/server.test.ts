@@ -81,6 +81,19 @@ describe("createServer", () => {
     expect(mockHandleToolCall).toHaveBeenCalledWith(imapClient, "list_folders", {});
   });
 
+  it("refuses an explicit account argument, since there is only one account", async () => {
+    const result = await client.callTool({
+      name: "list_folders",
+      arguments: { account: "work" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as TextContent)[0].text).toBe(
+      'Error: this server has a single account; call the tool without "account".'
+    );
+    expect(mockHandleToolCall).not.toHaveBeenCalled();
+  });
+
   it("returns a handler-reported error result unchanged", async () => {
     mockHandleToolCall.mockResolvedValue({
       content: [{ type: "text", text: "Error: id is required." }],

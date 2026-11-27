@@ -29,8 +29,9 @@ function withAccountParam(tool: Tool, accountNames: string[]): Tool {
           type: "string",
           enum: accountNames,
           description:
-            "Mail account to use. Email ids belong to the account they came from: " +
-            "use the same account for follow-up calls on an email.",
+            "Required in every call: the mail account to use. Email ids are unique " +
+            "only within one account, so keep each id together with its account " +
+            "and pass that account in follow-up calls.",
         },
         ...tool.inputSchema.properties,
       },
@@ -90,12 +91,19 @@ export function createServer(imap: ImapClient | ImapAccounts): Server {
   // Dispatch tool calls
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    const { account, ...rest }: Record<string, unknown> = args ?? {};
 
     if (!accounts) {
+      // A client with a stale multi-account schema must not silently act on
+      // this server's only mailbox.
+      if (account !== undefined) {
+        return errorResult(
+          'Error: this server has a single account; call the tool without "account".'
+        );
+      }
       return dispatch(imap as ImapClient, name, args || {}, name);
     }
 
-    const { account, ...rest }: Record<string, unknown> = args ?? {};
     const imapClient =
       typeof account === "string" ? accounts.get(account) : undefined;
     if (!imapClient) {

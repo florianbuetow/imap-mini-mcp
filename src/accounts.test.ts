@@ -1,9 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { loadAccounts, parseAccountFile } from "./accounts.js";
 import type { ImapClient, ImapConfig } from "./imap/index.js";
+
+// Creating symlinks needs extra rights on Windows, so the link tests let
+// realpathSync report where an entry points instead.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, realpathSync: vi.fn(actual.realpathSync) };
+});
+const { realpathSync: actualRealpathSync } =
+  await vi.importActual<typeof import("node:fs")>("node:fs");
+
+/** Make realpathSync resolve the entry `name` to `target`. */
+function linkEntry(name: string, target: string) {
+  vi.mocked(realpathSync).mockImplementation(((path: string) =>
+    basename(path) === name ? target : actualRealpathSync(path)) as typeof realpathSync);
+}
 
 const configOf = (client: ImapClient | undefined) =>
   (client as unknown as { config: ImapConfig }).config;
@@ -24,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
   vi.unstubAllEnvs();
+  vi.mocked(realpathSync).mockImplementation(actualRealpathSync);
 });
 
 // ---------------------------------------------------------------------------
@@ -37,10 +59,20 @@ describe("parseAccountFile", () => {
     });
   });
 
-  it("skips blank lines, comments and lines without '='", () => {
-    const text = "# comment\n\n   # indented comment\nIMAP_HOST=h\nnot a setting\n";
+  it("skips blank lines and comments", () => {
+    const text = "# comment\n\n   # indented comment\nIMAP_HOST=h\n";
 
     expect(parseAccountFile(text)).toEqual({ IMAP_HOST: "h" });
+  });
+
+  it("rejects a line without a key, naming the line but not its content", () => {
+    const text = "IMAP_HOST=h\nIMAP_PASS=first part\nsecond part\n";
+
+    expect(() => parseAccountFile(text, 'account file "work"')).toThrow(
+      'Line 3 of account file "work": expected KEY=value'
+    );
+    expect(() => parseAccountFile(text)).not.toThrow(/second part/);
+    expect(() => parseAccountFile("=value\n")).toThrow("Line 1 of account file");
   });
 
   it("accepts CRLF line endings and spaces around the key", () => {
@@ -127,6 +159,30 @@ describe("loadAccounts", () => {
     mkdirSync(join(dir, "..data"));
 
     expect([...loadAccounts(dir).keys()]).toEqual(["work"]);
+  });
+
+  it("follows a link that stays inside the directory (Kubernetes ..data layout)", () => {
+    mkdirSync(join(dir, "..data"));
+    writeAccount(join("..data", "work"));
+    writeAccount("work", "IMAP_HOST=not-the-link-target\n");
+    linkEntry("work", join(actualRealpathSync(dir), "..data", "work"));
+
+    expect(configOf(loadAccounts(dir).get("work")).host).toBe("imap.example.com");
+  });
+
+  it("rejects a link to a file outside the directory", () => {
+    const outside = mkdtempSync(join(tmpdir(), "imap-outside-"));
+    try {
+      writeFileSync(join(outside, "other"), BASIC);
+      writeAccount("work", "IMAP_HOST=not-the-link-target\n");
+      linkEntry("work", join(actualRealpathSync(outside), "other"));
+
+      expect(() => loadAccounts(dir)).toThrow(
+        'Account file "work" in ' + dir + " links to a file outside that directory"
+      );
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("rejects a file name that is not a valid account name", () => {

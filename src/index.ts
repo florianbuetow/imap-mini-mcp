@@ -51,11 +51,13 @@ async function main() {
     }
     isShuttingDown = true;
 
-    for (const imapClient of clients) {
-      try {
-        await imapClient.disconnect();
-      } catch (error) {
-        logFatalError("SHUTDOWN ERROR", error);
+    // Log out of all accounts at once, so one slow server doesn't hold up the rest.
+    const results = await Promise.allSettled(
+      clients.map((imapClient) => imapClient.disconnect())
+    );
+    for (const result of results) {
+      if (result.status === "rejected") {
+        logFatalError("SHUTDOWN ERROR", result.reason);
         exitCode = 1;
       }
     }

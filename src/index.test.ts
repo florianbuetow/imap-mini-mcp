@@ -268,6 +268,23 @@ describe("entrypoint (src/index.ts)", () => {
       expect(disconnectHome).toHaveBeenCalledTimes(1);
     });
 
+    it("logs out of all accounts at once, not one after another", async () => {
+      let finishWork: () => void = () => {};
+      disconnectWork.mockReturnValue(
+        new Promise<void>((resolve) => {
+          finishWork = resolve;
+        })
+      );
+      await loadAndWaitForStartup();
+
+      fire(processHandlers, "SIGTERM");
+
+      await vi.waitFor(() => expect(disconnectHome).toHaveBeenCalledTimes(1));
+      expect(exitSpy).not.toHaveBeenCalled();
+      finishWork();
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
+    });
+
     it("still disconnects the other accounts when one logout fails, then exits 1", async () => {
       disconnectWork.mockRejectedValue(new Error("logout failed"));
       await loadAndWaitForStartup();

@@ -87,7 +87,7 @@ const mockListAllEmailsByColor = vi.mocked(listAllEmailsByColor);
 const mockListAllStarredEmails = vi.mocked(listAllStarredEmails);
 const mockMarkRead = vi.mocked(markRead);
 const mockMarkUnread = vi.mocked(markUnread);
-const mockImapClient = {} as ImapClient;
+const mockImapClient = { user: "me@test.com" } as ImapClient;
 
 const TEST_ID = "2026-02-01T10:00:00.<msg@example.com>";
 
@@ -362,7 +362,6 @@ describe("handleToolCall — move_email", () => {
 describe("handleToolCall — create_draft", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv("IMAP_USER", "me@test.com");
   });
 
   it("returns error when required fields are missing", async () => {
@@ -409,7 +408,6 @@ describe("handleToolCall — create_draft", () => {
 describe("handleToolCall — draft_reply", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv("IMAP_USER", "me@test.com");
   });
 
   it("returns error when id or body is missing", async () => {
@@ -573,7 +571,6 @@ describe("handleToolCall — draft_reply", () => {
 describe("handleToolCall — update_draft", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv("IMAP_USER", "me@test.com");
   });
 
   it("returns error when required fields are missing", async () => {

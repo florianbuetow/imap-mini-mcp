@@ -84,10 +84,10 @@ Or as MCP client config:
 
 ### Multiple accounts
 
-One server process can serve several mailboxes. Put one file per account in a directory and set `IMAP_ACCOUNTS_DIR` to that directory:
+One server process can serve several mailboxes. Put one file per account in a directory **outside this repository**, readable only by you (e.g. `chmod 700`), and set `IMAP_ACCOUNTS_DIR` to that directory:
 
 ```
-accounts/
+~/.config/imap-mini-mcp/accounts/
   work.env
   home.env
   proton.env
@@ -108,18 +108,19 @@ IMAP_PASS=your-app-password
       "command": "node",
       "args": ["/path/to/imap-mini-mcp/dist/index.js"],
       "env": {
-        "IMAP_ACCOUNTS_DIR": "/path/to/accounts"
+        "IMAP_ACCOUNTS_DIR": "/home/you/.config/imap-mini-mcp/accounts"
       }
     }
   }
 }
 ```
 
-- The account name is the file name without `.env`, made of letters, digits, `-` and `_`. Files starting with `.` and subdirectories are ignored.
-- Values are taken verbatim up to the end of the line: no quotes and no inline comments, so passwords may contain any character. Lines starting with `#` are comments.
-- Every tool takes a required `account` parameter (an enum of the account names). Email ids belong to the account they came from.
+- The account name is the file name without `.env`, made of letters, digits, `-` and `_`. Files starting with `.` and subdirectories are ignored. Links are followed only if they stay inside the directory.
+- Each value is taken verbatim up to the end of its line: no quotes and no inline comments, so a password may contain any character except a line break. Lines starting with `#` are comments; any other line without `KEY=` is reported as an error, with its line number.
+- Every tool takes a required `account` parameter (an enum of the account names). Email ids are unique only within an account, so use the same account for follow-up calls.
 - Drafts use the account's own `IMAP_USER` as their From address.
-- While `IMAP_ACCOUNTS_DIR` is set, the `IMAP_*` environment variables are ignored.
+- Errors raised while a tool runs (e.g. a failed login) name the account.
+- While `IMAP_ACCOUNTS_DIR` is set, the `IMAP_*` environment variables are ignored. Without it, the server rejects calls that pass `account`.
 
 The one-file-per-account layout also works with systemd credentials (`LoadCredential=`) and with secrets mounted as a directory (Docker, Kubernetes).
 
