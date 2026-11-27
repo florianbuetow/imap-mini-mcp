@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This repository does not currently use release tags, so entries are grouped by date and major update scope.
 
+## 2026-11-27
+
+### Security
+- `IMAP_STARTTLS` had no effect: the client passed `disableSTARTTLS`, which imapflow does not know. With `IMAP_SECURE=false`, imapflow fell back to opportunistic STARTTLS, so if the server (or someone in between) did not advertise STARTTLS, the login was sent unencrypted; `IMAP_STARTTLS=false` did not turn STARTTLS off either. The client now passes imapflow's `doSTARTTLS` option when `IMAP_SECURE=false`: `IMAP_STARTTLS=true` (default) requires STARTTLS before login and fails if the server does not offer it, `IMAP_STARTTLS=false` never uses it. Setups with `IMAP_SECURE=false` against a server without STARTTLS must now set `IMAP_STARTTLS=false`. Nothing changes for `IMAP_SECURE=true`.
+
 ## 2026-08-16
 
 ### Fixed
