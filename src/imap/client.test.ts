@@ -356,6 +356,36 @@ describe("ImapClient", () => {
     await expect(client.disconnect()).resolves.toBeUndefined();
     expect(mockFlow.logout).not.toHaveBeenCalled();
   });
+
+  describe("STARTTLS options passed to ImapFlow", () => {
+    async function optionsFor(secure: boolean, starttls: boolean) {
+      const client = new ImapClient({ ...testConfig, secure, starttls });
+      await client.connect();
+      return ImapFlowMock.mock.lastCall![0];
+    }
+
+    it("requires STARTTLS when secure=false and starttls=true", async () => {
+      const options = await optionsFor(false, true);
+      expect(options.secure).toBe(false);
+      expect(options.doSTARTTLS).toBe(true);
+    });
+
+    it("disables STARTTLS when secure=false and starttls=false", async () => {
+      const options = await optionsFor(false, false);
+      expect(options.secure).toBe(false);
+      expect(options.doSTARTTLS).toBe(false);
+    });
+
+    // imapflow throws if secure=true is combined with doSTARTTLS=true
+    it.each([true, false])(
+      "sets no STARTTLS option when secure=true (starttls=%s)",
+      async (starttls) => {
+        const options = await optionsFor(true, starttls);
+        expect(options.secure).toBe(true);
+        expect(options).not.toHaveProperty("doSTARTTLS");
+      }
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

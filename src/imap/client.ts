@@ -124,7 +124,9 @@ export class ImapClient {
       auth: this.config.auth,
       logger: false,
       disableAutoIdle: false,
-      ...(!this.config.starttls ? { disableSTARTTLS: true } : {}),
+      // imapflow: doSTARTTLS=true requires STARTTLS before login, false never
+      // uses it. It must not be combined with secure=true (imapflow throws).
+      ...(!this.config.secure ? { doSTARTTLS: this.config.starttls } : {}),
       tls: {
         rejectUnauthorized: this.config.tlsRejectUnauthorized,
       },

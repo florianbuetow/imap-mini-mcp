@@ -45,7 +45,7 @@ The `args` path must point to the built `dist/index.js`. Add any optional variab
 | `IMAP_PASS` | yes | — | Password or app-specific password |
 | `IMAP_PORT` | no | `993` | IMAP server port |
 | `IMAP_SECURE` | no | `true` | Use TLS for the connection |
-| `IMAP_STARTTLS` | no | `true` | Upgrade to TLS via STARTTLS (when `IMAP_SECURE=false`) |
+| `IMAP_STARTTLS` | no | `true` | When `IMAP_SECURE=false`: require STARTTLS before login (the connection fails if the server does not offer it). `false` connects without encryption. Ignored when `IMAP_SECURE=true` |
 | `IMAP_TLS_REJECT_UNAUTHORIZED` | no | `true` | Reject self-signed TLS certificates |
 
 For most providers (Gmail, Outlook, Fastmail), the defaults work — just set host, user, and password.
